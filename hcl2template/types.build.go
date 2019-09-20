@@ -2,6 +2,7 @@ package hcl2template
 
 import (
 	"github.com/hashicorp/hcl2/hcl"
+	"github.com/hashicorp/packer/template"
 )
 
 const (
@@ -58,4 +59,18 @@ func (p *Parser) decodeBuildConfig(block *hcl.Block) (*Build, hcl.Diagnostics) {
 	}
 
 	return build, diags
+}
+
+func (builds *Builds) BuildersAndProvisioners() {
+
+	res := struct {
+		Builders       []*template.Builder
+		Provisioners   []*template.Provisioner
+		PostProcessors []*template.PostProcessor
+	}{}
+	for _, build := range builds {
+		for _, from := range build.Froms {
+
+		}
+	}
 }
