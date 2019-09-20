@@ -23,7 +23,7 @@ func (pkrCfg *PackerConfig) ToTemplate() (*template.Template, error) {
 	result.Variables = pkrCfg.Variables.Variables() // TODO(azr): make pkrCfg.Variables the right type
 	// TODO(azr): add sensitive variables
 
-	builder := pkrCfg.Builders()
+	builder := pkrCfg.ToV1Build()
 
 	// // Gather all the post-processors
 	// if len(r.PostProcessors) > 0 {

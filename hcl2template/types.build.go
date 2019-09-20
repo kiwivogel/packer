@@ -61,16 +61,22 @@ func (p *Parser) decodeBuildConfig(block *hcl.Block) (*Build, hcl.Diagnostics) {
 	return build, diags
 }
 
-func (builds *Builds) BuildersAndProvisioners() {
+type PackerV1Build struct {
+	Builders       []*template.Builder
+	Provisioners   []*template.Provisioner
+	PostProcessors []*template.PostProcessor
+}
 
-	res := struct {
-		Builders       []*template.Builder
-		Provisioners   []*template.Provisioner
-		PostProcessors []*template.PostProcessor
-	}{}
+func (builds Builds) ToV1Build() PackerV1Build {
+	res := PackerV1Build{}
+
 	for _, build := range builds {
 		for _, from := range build.Froms {
-
+			for _, provisionerGroup := range build.ProvisionerGroups {
+				for _, provisioner := range provisionerGroup {
+				}
+			}
 		}
 	}
+	return res
 }
