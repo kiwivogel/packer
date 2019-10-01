@@ -3,6 +3,11 @@
 ### IMPROVEMENTS:
 * builder/amazon: Add ability to set `run_volume_tags` [GH-8051]
 * builder/amazon: Add AWS API call reties on AMI prevalidation [GH-8034]
+* builder/azure: Refactor client config [GH-8121]
+* builder/cloudstack: New step to detach iso. [GH-8106]
+* builder/googlecompute: Fail fast when image name is invalid. [GH-8112]
+* builder/googlecompute: Users can now query Vault for an Oauth token rather
+    than setting an account file [GH-8143]
 * builder/hcloud: Allow selecting image based on filters [GH-7945]
 * builder/hyper-v: Decrease the delay between Hyper-V VM startup and hyper-v
     builder's ability to send keystrokes to the target VM. [GH-7970]
@@ -11,9 +16,15 @@
     [GH-8088]
 * builder/ucloud: Make ucloud builder's base url configurable [GH-8095]
 * builder/virtualbox-vm: Make target snapshot optional [GH-8011] [GH-8004]
+* builder/vmware: Allow user to attach floppy files to remote vmx builds
+    [GH-8132]
+* builder/yandex: Add ability to retry API requests [GH-8142]
 * builder/yandex: Support GPU instances and set source image by name [GH-8091]
+* communicator/ssh: Support for SSH port tunneling [GH-7918]
 * core: Add a new `floppy_label` option [GH-8099]
 * core: Added version compatibility to console command [GH-8080]
+* post-processor/vagrant-cloud: Allow blank access_token for private vagrant
+    box hosting [GH-8097]
 * post-processor/vagrant-cloud: Allow use of the Artifice post-processor with
     the Vagrant Cloud post-processor [GH-8018] [GH-8027]
 * post-processor/vsphere: Removed redundant whitelist check for builders,
@@ -21,10 +32,14 @@
 
 
 ### BUG FIXES:
-* builder/amazon: Fix FleetID crash [GH-8013]
+* builder/amazon: Fix FleetID crash. [GH-8013]
+* builder/amazon: Gracefully handle rate limiting when retrieving winrm
+    password. [GH-8087]
 * builder/azure: Avoid a panic in getObjectIdFromToken [GH-8047]
+* builder/googlecompute: Fix crash caused by nil account file. [GH-8102]
 * builder/hyper-v: Fix when management interface is not part of virtual switch
     [GH-8017]
+* builder/openstack: Fix dropped error when creating image client. [GH-8110]
 * builder/openstack: Fix race condition created when adding metadata [GH-8016]
 * builder/outscale: Get SSH Host from VM.Nics instead of VM Root [GH-8077]
 * builder/proxmox: Bump proxmox api dep, fixing bug with checking http status
@@ -33,8 +48,10 @@
     [GH-8084]
 * builder/proxmox: Fix panic caused by cancelling build [GH-8067] [GH-8072]
 * builder/qemu: Fix dropped error when retrieving version [GH-8050]
+* builder/vagrant: Fix dropped errors in code and tests. [GH-8118]
 * builder/vagrant: Fix provisioning boxes, define source and output boxes
     [GH-7957]
+* builder/vagrant: Fix ssh and package steps to use source syntax. [GH-8125]
 * builder/vagrant: Use GlobalID when provided [GH-8092]
 * builder/virtualbox: Fix windows pathing problem for guest additions checksum
     download. [GH-7996]
@@ -45,7 +62,13 @@
 * core: Fix handling of booleans where "unset" is a value distinct from
     "false". [GH-8021]
 * core: Fix tests that swallowed errors in goroutines [GH-8094]
+* core: Fix bug where Packer could no longer run as background process [GH-8101]
+* post-processor/amazon-import: Fix non-default encryption. [GH-8113]
 * provisioner/ansible: Fix provisioner dropped errors [GH-8045]
+
+### BACKWARDS INCOMPATIBILITIES:
+* core: "sed" template function has been deprecated in favor of "replace" and
+    "replace_all" functins [GH-8119]
 
 ## 1.4.3 (August 14, 2019)
 
