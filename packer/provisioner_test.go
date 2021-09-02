@@ -2,25 +2,28 @@ package packer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 )
 
 func TestProvisionHook_Impl(t *testing.T) {
 	var raw interface{}
 	raw = &ProvisionHook{}
-	if _, ok := raw.(Hook); !ok {
+	if _, ok := raw.(packersdk.Hook); !ok {
 		t.Fatalf("must be a Hook")
 	}
 }
 
 func TestProvisionHook(t *testing.T) {
-	pA := &MockProvisioner{}
-	pB := &MockProvisioner{}
+	pA := &packersdk.MockProvisioner{}
+	pB := &packersdk.MockProvisioner{}
 
 	ui := testUi()
-	var comm Communicator = new(MockCommunicator)
+	var comm packersdk.Communicator = new(packersdk.MockCommunicator)
 	var data interface{} = nil
 
 	hook := &ProvisionHook{
@@ -42,11 +45,11 @@ func TestProvisionHook(t *testing.T) {
 }
 
 func TestProvisionHook_nilComm(t *testing.T) {
-	pA := &MockProvisioner{}
-	pB := &MockProvisioner{}
+	pA := &packersdk.MockProvisioner{}
+	pB := &packersdk.MockProvisioner{}
 
 	ui := testUi()
-	var comm Communicator = nil
+	var comm packersdk.Communicator = nil
 	var data interface{} = nil
 
 	hook := &ProvisionHook{
@@ -65,7 +68,7 @@ func TestProvisionHook_nilComm(t *testing.T) {
 func TestProvisionHook_cancel(t *testing.T) {
 	topCtx, topCtxCancel := context.WithCancel(context.Background())
 
-	p := &MockProvisioner{
+	p := &packersdk.MockProvisioner{
 		ProvFunc: func(ctx context.Context) error {
 			topCtxCancel()
 			<-ctx.Done()
@@ -79,7 +82,7 @@ func TestProvisionHook_cancel(t *testing.T) {
 		},
 	}
 
-	err := hook.Run(topCtx, "foo", nil, new(MockCommunicator), nil)
+	err := hook.Run(topCtx, "foo", nil, new(packersdk.MockCommunicator), nil)
 	if err == nil {
 		t.Fatal("should have err")
 	}
@@ -88,11 +91,11 @@ func TestProvisionHook_cancel(t *testing.T) {
 // TODO(mitchellh): Test that they're run in the proper order
 
 func TestPausedProvisioner_impl(t *testing.T) {
-	var _ Provisioner = new(PausedProvisioner)
+	var _ packersdk.Provisioner = new(PausedProvisioner)
 }
 
 func TestPausedProvisionerPrepare(t *testing.T) {
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &PausedProvisioner{
 		Provisioner: mock,
 	}
@@ -107,14 +110,14 @@ func TestPausedProvisionerPrepare(t *testing.T) {
 }
 
 func TestPausedProvisionerProvision(t *testing.T) {
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &PausedProvisioner{
 		Provisioner: mock,
 	}
 
 	ui := testUi()
-	comm := new(MockCommunicator)
-	prov.Provision(context.Background(), ui, comm)
+	comm := new(packersdk.MockCommunicator)
+	prov.Provision(context.Background(), ui, comm, make(map[string]interface{}))
 	if !mock.ProvCalled {
 		t.Fatal("prov should be called")
 	}
@@ -132,7 +135,7 @@ func TestPausedProvisionerProvision_waits(t *testing.T) {
 
 	prov := &PausedProvisioner{
 		PauseBefore: waitTime,
-		Provisioner: &MockProvisioner{
+		Provisioner: &packersdk.MockProvisioner{
 			ProvFunc: func(context.Context) error {
 				timeSinceStartTime := time.Since(startTime)
 				if timeSinceStartTime < waitTime {
@@ -143,7 +146,7 @@ func TestPausedProvisionerProvision_waits(t *testing.T) {
 		},
 	}
 
-	err := prov.Provision(context.Background(), testUi(), new(MockCommunicator))
+	err := prov.Provision(context.Background(), testUi(), new(packersdk.MockCommunicator), make(map[string]interface{}))
 
 	if err != nil {
 		t.Fatalf("prov failed: %v", err)
@@ -153,7 +156,7 @@ func TestPausedProvisionerProvision_waits(t *testing.T) {
 func TestPausedProvisionerCancel(t *testing.T) {
 	topCtx, cancelTopCtx := context.WithCancel(context.Background())
 
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &PausedProvisioner{
 		Provisioner: mock,
 	}
@@ -164,18 +167,18 @@ func TestPausedProvisionerCancel(t *testing.T) {
 		return ctx.Err()
 	}
 
-	err := prov.Provision(topCtx, testUi(), new(MockCommunicator))
+	err := prov.Provision(topCtx, testUi(), new(packersdk.MockCommunicator), make(map[string]interface{}))
 	if err == nil {
 		t.Fatal("should have err")
 	}
 }
 
 func TestDebuggedProvisioner_impl(t *testing.T) {
-	var _ Provisioner = new(DebuggedProvisioner)
+	var _ packersdk.Provisioner = new(DebuggedProvisioner)
 }
 
 func TestDebuggedProvisionerPrepare(t *testing.T) {
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &DebuggedProvisioner{
 		Provisioner: mock,
 	}
@@ -190,15 +193,15 @@ func TestDebuggedProvisionerPrepare(t *testing.T) {
 }
 
 func TestDebuggedProvisionerProvision(t *testing.T) {
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &DebuggedProvisioner{
 		Provisioner: mock,
 	}
 
 	ui := testUi()
-	comm := new(MockCommunicator)
+	comm := new(packersdk.MockCommunicator)
 	writeReader(ui, "\n")
-	prov.Provision(context.Background(), ui, comm)
+	prov.Provision(context.Background(), ui, comm, make(map[string]interface{}))
 	if !mock.ProvCalled {
 		t.Fatal("prov should be called")
 	}
@@ -213,7 +216,7 @@ func TestDebuggedProvisionerProvision(t *testing.T) {
 func TestDebuggedProvisionerCancel(t *testing.T) {
 	topCtx, topCtxCancel := context.WithCancel(context.Background())
 
-	mock := new(MockProvisioner)
+	mock := new(packersdk.MockProvisioner)
 	prov := &DebuggedProvisioner{
 		Provisioner: mock,
 	}
@@ -224,8 +227,119 @@ func TestDebuggedProvisionerCancel(t *testing.T) {
 		return ctx.Err()
 	}
 
-	err := prov.Provision(topCtx, testUi(), new(MockCommunicator))
+	err := prov.Provision(topCtx, testUi(), new(packersdk.MockCommunicator), make(map[string]interface{}))
 	if err == nil {
 		t.Fatal("should have error")
+	}
+}
+
+func TestRetriedProvisioner_impl(t *testing.T) {
+	var _ packersdk.Provisioner = new(RetriedProvisioner)
+}
+
+func TestRetriedProvisionerPrepare(t *testing.T) {
+	mock := new(packersdk.MockProvisioner)
+	prov := &RetriedProvisioner{
+		Provisioner: mock,
+	}
+
+	err := prov.Prepare(42)
+	if err != nil {
+		t.Fatal("should not have errored")
+	}
+	if !mock.PrepCalled {
+		t.Fatal("prepare should be called")
+	}
+	if mock.PrepConfigs[0] != 42 {
+		t.Fatal("should have proper configs")
+	}
+}
+
+func TestRetriedProvisionerProvision(t *testing.T) {
+	mock := &packersdk.MockProvisioner{
+		ProvFunc: func(ctx context.Context) error {
+			return errors.New("failed")
+		},
+	}
+
+	prov := &RetriedProvisioner{
+		MaxRetries:  2,
+		Provisioner: mock,
+	}
+
+	ui := testUi()
+	comm := new(packersdk.MockCommunicator)
+	err := prov.Provision(context.Background(), ui, comm, make(map[string]interface{}))
+	if err != nil {
+		t.Fatal("should not have errored")
+	}
+	if !mock.ProvCalled {
+		t.Fatal("prov should be called")
+	}
+	if !mock.ProvRetried {
+		t.Fatal("prov should be retried")
+	}
+	if mock.ProvUi != ui {
+		t.Fatal("should have proper ui")
+	}
+	if mock.ProvCommunicator != comm {
+		t.Fatal("should have proper comm")
+	}
+}
+
+func TestRetriedProvisionerCancelledProvision(t *testing.T) {
+	// Don't retry if context is cancelled
+	ctx, topCtxCancel := context.WithCancel(context.Background())
+
+	mock := &packersdk.MockProvisioner{
+		ProvFunc: func(ctx context.Context) error {
+			topCtxCancel()
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	prov := &RetriedProvisioner{
+		MaxRetries:  2,
+		Provisioner: mock,
+	}
+
+	ui := testUi()
+	comm := new(packersdk.MockCommunicator)
+	err := prov.Provision(ctx, ui, comm, make(map[string]interface{}))
+	if err == nil {
+		t.Fatal("should have errored")
+	}
+	if !mock.ProvCalled {
+		t.Fatal("prov should be called")
+	}
+	if mock.ProvRetried {
+		t.Fatal("prov should NOT be retried")
+	}
+	if mock.ProvUi != ui {
+		t.Fatal("should have proper ui")
+	}
+	if mock.ProvCommunicator != comm {
+		t.Fatal("should have proper comm")
+	}
+}
+
+func TestRetriedProvisionerCancel(t *testing.T) {
+	topCtx, cancelTopCtx := context.WithCancel(context.Background())
+
+	mock := new(packersdk.MockProvisioner)
+	prov := &RetriedProvisioner{
+		Provisioner: mock,
+	}
+
+	mock.ProvFunc = func(ctx context.Context) error {
+		cancelTopCtx()
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	err := prov.Provision(topCtx, testUi(), new(packersdk.MockCommunicator), make(map[string]interface{}))
+	if err == nil {
+		t.Fatal("should have err")
 	}
 }

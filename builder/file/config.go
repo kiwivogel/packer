@@ -1,12 +1,14 @@
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+
 package file
 
 import (
 	"fmt"
 
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 )
 
 var ErrTargetRequired = fmt.Errorf("target required")
@@ -20,8 +22,7 @@ type Config struct {
 	Content string `mapstructure:"content"`
 }
 
-func NewConfig(raws ...interface{}) (*Config, []string, error) {
-	c := new(Config)
+func (c *Config) Prepare(raws ...interface{}) ([]string, error) {
 	warnings := []string{}
 
 	err := config.Decode(c, &config.DecodeOpts{
@@ -31,13 +32,13 @@ func NewConfig(raws ...interface{}) (*Config, []string, error) {
 		},
 	}, raws...)
 	if err != nil {
-		return nil, warnings, err
+		return warnings, err
 	}
 
-	var errs *packer.MultiError
+	var errs *packersdk.MultiError
 
 	if c.Target == "" {
-		errs = packer.MultiErrorAppend(errs, ErrTargetRequired)
+		errs = packersdk.MultiErrorAppend(errs, ErrTargetRequired)
 	}
 
 	if c.Content == "" && c.Source == "" {
@@ -45,12 +46,12 @@ func NewConfig(raws ...interface{}) (*Config, []string, error) {
 	}
 
 	if c.Content != "" && c.Source != "" {
-		errs = packer.MultiErrorAppend(errs, ErrContentSourceConflict)
+		errs = packersdk.MultiErrorAppend(errs, ErrContentSourceConflict)
 	}
 
 	if errs != nil && len(errs.Errors) > 0 {
-		return nil, warnings, errs
+		return warnings, errs
 	}
 
-	return c, warnings, nil
+	return warnings, nil
 }

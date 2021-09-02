@@ -2,13 +2,16 @@ package packer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
-	configHelper "github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/template"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template"
+	configHelper "github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer/version"
 )
 
 func TestCoreBuildNames(t *testing.T) {
@@ -36,15 +39,16 @@ func TestCoreBuildNames(t *testing.T) {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		core, err := NewCore(&CoreConfig{
+		core := NewCore(&CoreConfig{
 			Template:  tpl,
 			Variables: tc.Vars,
 		})
+		err = core.Initialize()
 		if err != nil {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		names := core.BuildNames()
+		names := core.BuildNames(nil, nil)
 		if !reflect.DeepEqual(names, tc.Result) {
 			t.Fatalf("err: %s\n\n%#v", tc.File, names)
 		}
@@ -140,6 +144,36 @@ func TestCoreBuild_env(t *testing.T) {
 
 	if result["value"] != "test" {
 		t.Fatalf("bad: %#v", result)
+	}
+}
+
+func TestCoreBuild_IgnoreTemplateVariables(t *testing.T) {
+	os.Setenv("PACKER_TEST_ENV", "test")
+	defer os.Setenv("PACKER_TEST_ENV", "")
+
+	config := TestCoreConfig(t)
+	testCoreTemplate(t, config, fixtureDir("build-ignore-template-variable.json"))
+	core := TestCore(t, config)
+
+	if core.variables["http_ip"] != "{{ .HTTPIP }}" {
+		t.Fatalf("bad: User variable http_ip={{ .HTTPIP }} should not be interpolated")
+	}
+
+	if core.variables["var"] != "test_{{ .PACKER_TEST_TEMP }}" {
+		t.Fatalf("bad: User variable var should be half interpolated to var=test_{{ .PACKER_TEST_TEMP }} but was var=%s", core.variables["var"])
+	}
+
+	if core.variables["array_var"] != "us-west-1,us-west-2" {
+		t.Fatalf("bad: User variable array_var should be \"us-west-1,us-west-2\" but was %s", core.variables["var"])
+	}
+
+	build, err := core.Build("test")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if _, err := build.Prepare(); err != nil {
+		t.Fatalf("err: %s", err)
 	}
 }
 
@@ -433,37 +467,15 @@ func TestCoreValidate(t *testing.T) {
 		Vars map[string]string
 		Err  bool
 	}{
-		{
-			"validate-dup-builder.json",
-			nil,
-			true,
-		},
+		{"validate-dup-builder.json", nil, true},
 
 		// Required variable not set
-		{
-			"validate-req-variable.json",
-			nil,
-			true,
-		},
-
-		{
-			"validate-req-variable.json",
-			map[string]string{"foo": "bar"},
-			false,
-		},
+		{"validate-req-variable.json", nil, true},
+		{"validate-req-variable.json", map[string]string{"foo": "bar"}, false},
 
 		// Min version good
-		{
-			"validate-min-version.json",
-			map[string]string{"foo": "bar"},
-			false,
-		},
-
-		{
-			"validate-min-version-high.json",
-			map[string]string{"foo": "bar"},
-			true,
-		},
+		{"validate-min-version.json", map[string]string{"foo": "bar"}, false},
+		{"validate-min-version-high.json", map[string]string{"foo": "bar"}, true},
 	}
 
 	for _, tc := range cases {
@@ -478,11 +490,12 @@ func TestCoreValidate(t *testing.T) {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		_, err = NewCore(&CoreConfig{
+		core := NewCore(&CoreConfig{
 			Template:  tpl,
 			Variables: tc.Vars,
 			Version:   "1.0.0",
 		})
+		err = core.Initialize()
 
 		if (err != nil) != tc.Err {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
@@ -526,13 +539,19 @@ func TestCore_InterpolateUserVars(t *testing.T) {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		ccf, err := NewCore(&CoreConfig{
+		ccf := NewCore(&CoreConfig{
 			Template: tpl,
 			Version:  "1.0.0",
 		})
+		err = ccf.Initialize()
 
 		if (err != nil) != tc.Err {
-			t.Fatalf("err: %s\n\n%s", tc.File, err)
+			if tc.Err == false {
+				t.Fatalf("Error interpolating %s: Expected no error, but got: %s", tc.File, err)
+			} else {
+				t.Fatalf("Error interpolating %s: Expected an error, but got: %s", tc.File, err)
+			}
+
 		}
 		if !tc.Err {
 			for k, v := range ccf.variables {
@@ -592,11 +611,12 @@ func TestCore_InterpolateUserVars_VarFile(t *testing.T) {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		ccf, err := NewCore(&CoreConfig{
+		ccf := NewCore(&CoreConfig{
 			Template:  tpl,
 			Version:   "1.0.0",
 			Variables: tc.Variables,
 		})
+		err = ccf.Initialize()
 
 		if (err != nil) != tc.Err {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
@@ -623,18 +643,18 @@ func TestSensitiveVars(t *testing.T) {
 		// hardcoded
 		{
 			"sensitive-variables.json",
-			map[string]string{"foo": "bar"},
+			map[string]string{"foo": "bar_extra_sensitive_probably_a_password"},
 			[]string{"foo"},
-			"bar",
+			"the foo jumped over the <sensitive>",
 			false,
 		},
 		// interpolated
 		{
 			"sensitive-variables.json",
-			map[string]string{"foo": "bar",
+			map[string]string{"foo": "bar_extra_sensitive_probably_a_password",
 				"bang": "{{ user `foo`}}"},
 			[]string{"bang"},
-			"bar",
+			"the foo jumped over the <sensitive>",
 			false,
 		},
 	}
@@ -651,34 +671,119 @@ func TestSensitiveVars(t *testing.T) {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
 
-		_, err = NewCore(&CoreConfig{
+		ccf := NewCore(&CoreConfig{
 			Template:  tpl,
 			Variables: tc.Vars,
 			Version:   "1.0.0",
 		})
+		err = ccf.Initialize()
 
 		if (err != nil) != tc.Err {
 			t.Fatalf("err: %s\n\n%s", tc.File, err)
 		}
-		filtered := LogSecretFilter.get()
-		if filtered[0] != tc.Expected && len(filtered) != 1 {
+		// Check that filter correctly manipulates strings:
+		filtered := packersdk.LogSecretFilter.FilterString("the foo jumped over the bar_extra_sensitive_probably_a_password")
+		if filtered != tc.Expected {
 			t.Fatalf("not filtering sensitive vars; filtered is %#v", filtered)
 		}
-
-		// clear filter so it doesn't break other tests
-		LogSecretFilter.s = make(map[string]struct{})
 	}
 }
 
-func testComponentFinder() *ComponentFinder {
-	builderFactory := func(n string) (Builder, error) { return new(MockBuilder), nil }
-	ppFactory := func(n string) (PostProcessor, error) { return new(MockPostProcessor), nil }
-	provFactory := func(n string) (Provisioner, error) { return new(MockProvisioner), nil }
-	return &ComponentFinder{
-		Builder:       builderFactory,
-		PostProcessor: ppFactory,
-		Provisioner:   provFactory,
+// Normally I wouldn't test a little helper function, but it's regex.
+func TestIsDoneInterpolating(t *testing.T) {
+	cases := []struct {
+		inputString  string
+		expectedBool bool
+		expectedErr  bool
+	}{
+		// Many of these tests are just exercising the regex to make sure it
+		// doesnt get confused by different kinds of whitespace
+		{"charmander-{{ user `spacesaroundticks` }}", false, false},
+		{"pidgey-{{ user `partyparrot`}}", false, false},
+		{"jigglypuff-{{ user`notickspaaces`}}", false, false},
+		{"eevee-{{user`nospaces`}}", false, false},
+		{"staryu-{{  user  `somanyspaces`  }}", false, false},
+		{"{{  user  `somanyspaces`  }}-{{isotime}}", false, false},
+		// Make sure that we only flag on "user" when it's in the right set of
+		// brackets, in a properly declared template engine format
+		{"missingno-{{ user `missingbracket` }", true, false},
+		{"missing2-{user ``missingopenbrackets }}", true, false},
+		{"wat-userjustinname", true, false},
+		// Any functions that aren't "user" should have already been properly
+		// interpolated by the time this is called, so these cases aren't
+		// realistic. That said, this makes it clear that this function doesn't
+		// care about anything but the user function
+		{"pokemon-{{ isotime }}", true, false},
+		{"squirtle-{{ env `water`}}", true, false},
+		{"bulbasaur-notinterpolated", true, false},
+		{"extra-{{thisfunc `user`}}", true, false},
 	}
+	for _, tc := range cases {
+		done, err := isDoneInterpolating(tc.inputString)
+		if (err != nil) != tc.expectedErr {
+			t.Fatalf("Test case failed. Error: %s expected error: "+
+				"%t test string: %s", err, tc.expectedErr, tc.inputString)
+		}
+		if done != tc.expectedBool {
+			t.Fatalf("Test case failed. inputString: %s. "+
+				"Expected done = %t but got done = %t", tc.inputString,
+				tc.expectedBool, done)
+		}
+	}
+}
+
+func TestEnvAndFileVars(t *testing.T) {
+	os.Setenv("INTERPOLATE_TEST_ENV_1", "bulbasaur")
+	os.Setenv("INTERPOLATE_TEST_ENV_3", "/path/to/nowhere")
+	os.Setenv("INTERPOLATE_TEST_ENV_2", "5")
+	os.Setenv("INTERPOLATE_TEST_ENV_4", "bananas")
+
+	f, err := os.Open(fixtureDir("complex-recursed-env-user-var-file.json"))
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	tpl, err := template.Parse(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("err: %s\n\n%s", "complex-recursed-env-user-var-file.json", err)
+	}
+
+	ccf := NewCore(&CoreConfig{
+		Template: tpl,
+		Version:  "1.0.0",
+		Variables: map[string]string{
+			"var_1":     "partyparrot",
+			"var_2":     "{{user `env_1`}}-{{user `env_2`}}{{user `env_3`}}-{{user `var_1`}}",
+			"final_var": "{{user `env_1`}}/{{user `env_2`}}/{{user `env_4`}}{{user `env_3`}}-{{user `var_1`}}/vmware/{{user `var_2`}}.vmx",
+		},
+	})
+	err = ccf.Initialize()
+
+	expected := map[string]string{
+		"var_1":     "partyparrot",
+		"var_2":     "bulbasaur-5/path/to/nowhere-partyparrot",
+		"final_var": "bulbasaur/5/bananas/path/to/nowhere-partyparrot/vmware/bulbasaur-5/path/to/nowhere-partyparrot.vmx",
+		"env_1":     "bulbasaur",
+		"env_2":     "5",
+		"env_3":     "/path/to/nowhere",
+		"env_4":     "bananas",
+	}
+	if err != nil {
+		t.Fatalf("err: %s\n\n%s", "complex-recursed-env-user-var-file.json", err)
+	}
+	for k, v := range ccf.variables {
+		if expected[k] != v {
+			t.Fatalf("Expected value %s for key %s but got %s",
+				expected[k], k, v)
+		}
+	}
+
+	// Clean up env vars
+	os.Unsetenv("INTERPOLATE_TEST_ENV_1")
+	os.Unsetenv("INTERPOLATE_TEST_ENV_3")
+	os.Unsetenv("INTERPOLATE_TEST_ENV_2")
+	os.Unsetenv("INTERPOLATE_TEST_ENV_4")
 }
 
 func testCoreTemplate(t *testing.T, c *CoreConfig, p string) {
@@ -688,4 +793,83 @@ func testCoreTemplate(t *testing.T, c *CoreConfig, p string) {
 	}
 
 	c.Template = tpl
+}
+
+func TestCoreBuild_provRetry(t *testing.T) {
+	config := TestCoreConfig(t)
+	testCoreTemplate(t, config, fixtureDir("build-prov-retry.json"))
+	b := TestBuilder(t, config, "test")
+	pString := new(packersdk.MockProvisioner)
+	pInt := new(packersdk.MockProvisioner)
+	config.Components.PluginConfig.Provisioners = MapOfProvisioner{
+		"test-string": func() (packersdk.Provisioner, error) { return pString, nil },
+		// backwards compatibility
+		"test-integer": func() (packersdk.Provisioner, error) { return pInt, nil },
+	}
+	core := TestCore(t, config)
+
+	b.ArtifactId = "hello"
+
+	build, err := core.Build("test")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if _, err := build.Prepare(); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	ui := testUi()
+	pInt.ProvFunc = func(ctx context.Context) error {
+		return errors.New("failed")
+	}
+	pString.ProvFunc = func(ctx context.Context) error {
+		return errors.New("failed")
+	}
+
+	artifact, err := build.Run(context.Background(), ui)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	if len(artifact) != 1 {
+		t.Fatalf("bad: %#v", artifact)
+	}
+
+	if artifact[0].Id() != b.ArtifactId {
+		t.Fatalf("bad: %s", artifact[0].Id())
+	}
+	if !pString.ProvRetried {
+		t.Fatal("provisioner should retry for max_retries string value")
+	}
+	// backwards compatibility
+	if !pInt.ProvRetried {
+		t.Fatal("provisioner should retry for max_retries integer value")
+	}
+}
+
+func TestCoreBuild_packerVersion(t *testing.T) {
+	config := TestCoreConfig(t)
+	testCoreTemplate(t, config, fixtureDir("build-var-packer-version.json"))
+	b := TestBuilder(t, config, "test")
+	core := TestCore(t, config)
+
+	expected := version.FormattedVersion()
+	build, err := core.Build("test")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if _, err := build.Prepare(); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	// Interpolate the config
+	var result map[string]interface{}
+	err = configHelper.Decode(&result, nil, b.PrepareConfig...)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if result["value"] != expected {
+		t.Fatalf("bad: %#v", result)
+	}
 }

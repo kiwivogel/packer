@@ -2,16 +2,18 @@ package command
 
 import (
 	"bytes"
+	"io/ioutil"
 	"path/filepath"
 	"testing"
 
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer/packer"
 )
 
 const fixturesDir = "./test-fixtures"
 
 func fatalCommand(t *testing.T, m Meta) {
-	ui := m.Ui.(*packer.BasicUi)
+	ui := m.Ui.(*packersdk.BasicUi)
 	out := ui.Writer.(*bytes.Buffer)
 	err := ui.ErrorWriter.(*bytes.Buffer)
 	t.Fatalf(
@@ -21,14 +23,25 @@ func fatalCommand(t *testing.T, m Meta) {
 }
 
 func outputCommand(t *testing.T, m Meta) (string, string) {
-	ui := m.Ui.(*packer.BasicUi)
+	ui := m.Ui.(*packersdk.BasicUi)
 	out := ui.Writer.(*bytes.Buffer)
 	err := ui.ErrorWriter.(*bytes.Buffer)
 	return out.String(), err.String()
 }
 
-func testFixture(n string) string {
-	return filepath.Join(fixturesDir, n)
+func testFixtureContent(n ...string) string {
+	path := filepath.Join(append([]string{fixturesDir}, n...)...)
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+func testFixture(n ...string) string {
+	paths := []string{fixturesDir}
+	paths = append(paths, n...)
+	return filepath.Join(paths...)
 }
 
 func testMeta(t *testing.T) Meta {
@@ -36,7 +49,7 @@ func testMeta(t *testing.T) Meta {
 
 	return Meta{
 		CoreConfig: packer.TestCoreConfig(t),
-		Ui: &packer.BasicUi{
+		Ui: &packersdk.BasicUi{
 			Writer:      &out,
 			ErrorWriter: &err,
 		},

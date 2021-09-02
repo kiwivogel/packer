@@ -10,6 +10,10 @@ import (
 // environment variables and elevated username and password strings
 type FixerPowerShellEscapes struct{}
 
+func (FixerPowerShellEscapes) DeprecatedOptions() map[string][]string {
+	return map[string][]string{}
+}
+
 func (FixerPowerShellEscapes) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	type template struct {
 		Provisioners []interface{}

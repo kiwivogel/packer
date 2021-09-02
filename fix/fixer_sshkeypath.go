@@ -8,6 +8,12 @@ import (
 // to "ssh_private_key_file".
 type FixerSSHKeyPath struct{}
 
+func (FixerSSHKeyPath) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"*": []string{"ssh_key_path"},
+	}
+}
+
 func (FixerSSHKeyPath) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	// The type we'll decode into; we only care about builders
 	type template struct {

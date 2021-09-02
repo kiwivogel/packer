@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"golang.org/x/tools/imports"
 )
 
 const target = "command/plugin.go"
@@ -41,22 +43,30 @@ func main() {
 		log.Fatalf("Failed to discover post processors: %s", err)
 	}
 
+	datasources, err := discoverDatasources()
+	if err != nil {
+		log.Fatalf("Failed to discover Datasources: %s", err)
+	}
+
 	// Do some simple code generation and templating
 	output := source
-	output = strings.Replace(output, "IMPORTS", makeImports(builders, provisioners, postProcessors), 1)
+	output = strings.Replace(output, "IMPORTS", makeImports(builders, provisioners, postProcessors, datasources), 1)
 	output = strings.Replace(output, "BUILDERS", makeMap("Builders", "Builder", builders), 1)
 	output = strings.Replace(output, "PROVISIONERS", makeMap("Provisioners", "Provisioner", provisioners), 1)
 	output = strings.Replace(output, "POSTPROCESSORS", makeMap("PostProcessors", "PostProcessor", postProcessors), 1)
+	output = strings.Replace(output, "DATASOURCES", makeMap("Datasources", "Datasource", datasources), 1)
 
 	// TODO sort the lists of plugins so we are not subjected to random OS ordering of the plugin lists
 	// TODO format the file
 
 	// Write our generated code to the command/plugin.go file
 	file, err := os.Create(target)
-	defer file.Close()
 	if err != nil {
 		log.Fatalf("Failed to open %s for writing: %s", target, err)
 	}
+	defer file.Close()
+
+	output = string(goFmt(target, []byte(output)))
 
 	_, err = file.WriteString(output)
 	if err != nil {
@@ -64,6 +74,15 @@ func main() {
 	}
 
 	log.Printf("Generated %s", target)
+}
+
+func goFmt(filename string, b []byte) []byte {
+	fb, err := imports.Process(filename, b, nil)
+	if err != nil {
+		log.Printf("formatting err: %v", err)
+		return b
+	}
+	return fb
 }
 
 type plugin struct {
@@ -77,14 +96,14 @@ type plugin struct {
 // makeMap creates a map named Name with type packer.Name that looks something
 // like this:
 //
-// var Builders = map[string]packer.Builder{
+// var Builders = map[string]packersdk.Builder{
 // 	"amazon-chroot":   new(chroot.Builder),
 // 	"amazon-ebs":      new(ebs.Builder),
 // 	"amazon-instance": new(instance.Builder),
 func makeMap(varName, varType string, items []plugin) string {
 	output := ""
 
-	output += fmt.Sprintf("var %s = map[string]packer.%s{\n", varName, varType)
+	output += fmt.Sprintf("var %s = map[string]packersdk.%s{\n", varName, varType)
 	for _, item := range items {
 		output += fmt.Sprintf("\t\"%s\":   new(%s.%s),\n", item.PluginName, item.ImportName, item.TypeName)
 	}
@@ -92,7 +111,7 @@ func makeMap(varName, varType string, items []plugin) string {
 	return output
 }
 
-func makeImports(builders, provisioners, postProcessors []plugin) string {
+func makeImports(builders, provisioners, postProcessors, Datasources []plugin) string {
 	plugins := []string{}
 
 	for _, builder := range builders {
@@ -105,6 +124,10 @@ func makeImports(builders, provisioners, postProcessors []plugin) string {
 
 	for _, postProcessor := range postProcessors {
 		plugins = append(plugins, fmt.Sprintf("\t%s \"github.com/hashicorp/packer/%s\"\n", postProcessor.ImportName, filepath.ToSlash(postProcessor.Path)))
+	}
+
+	for _, datasource := range Datasources {
+		plugins = append(plugins, fmt.Sprintf("\t%s \"github.com/hashicorp/packer/%s\"\n", datasource.ImportName, filepath.ToSlash(datasource.Path)))
 	}
 
 	// Make things pretty
@@ -123,15 +146,17 @@ func listDirectories(path string) ([]string, error) {
 
 	for _, item := range items {
 		// We only want directories
-		if item.IsDir() {
-			currentDir := filepath.Join(path, item.Name())
-			names = append(names, currentDir)
+		if !item.IsDir() ||
+			item.Name() == "common" {
+			continue
+		}
+		currentDir := filepath.Join(path, item.Name())
+		names = append(names, currentDir)
 
-			// Do some recursion
-			subNames, err := listDirectories(currentDir)
-			if err == nil {
-				names = append(names, subNames...)
-			}
+		// Do some recursion
+		subNames, err := listDirectories(currentDir)
+		if err == nil {
+			names = append(names, subNames...)
 		}
 	}
 
@@ -214,6 +239,12 @@ func discoverBuilders() ([]plugin, error) {
 	return discoverTypesInPath(path, typeID)
 }
 
+func discoverDatasources() ([]plugin, error) {
+	path := "./datasource"
+	typeID := "Datasource"
+	return discoverTypesInPath(path, typeID)
+}
+
 func discoverProvisioners() ([]plugin, error) {
 	path := "./provisioner"
 	typeID := "Provisioner"
@@ -239,7 +270,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/plugin"
+packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/plugin"
 
 IMPORTS
 )
@@ -254,7 +286,9 @@ PROVISIONERS
 
 POSTPROCESSORS
 
-var pluginRegexp = regexp.MustCompile("packer-(builder|post-processor|provisioner)-(.+)")
+DATASOURCES
+
+var pluginRegexp = regexp.MustCompile("packer-(builder|post-processor|provisioner|datasource)-(.+)")
 
 func (c *PluginCommand) Run(args []string) int {
 	// This is an internal call (users should not call this directly) so we're
@@ -303,6 +337,13 @@ func (c *PluginCommand) Run(args []string) int {
 			return 1
 		}
 		server.RegisterPostProcessor(postProcessor)
+	case "datasource":
+		datasource, found := Datasources[pluginName]
+		if !found {
+			c.Ui.Error(fmt.Sprintf("Could not load datasource: %s", pluginName))
+			return 1
+		}
+		server.RegisterDatasource(datasource)
 	}
 
 	server.Serve()

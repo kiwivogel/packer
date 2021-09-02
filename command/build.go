@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
+	"time"
 
-	"github.com/hashicorp/packer/helper/enumflag"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclparse"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template"
+	"github.com/hashicorp/packer/hcl2template"
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template"
+	"github.com/hashicorp/packer/version"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/hako/durafmt"
 	"github.com/posener/complete"
 )
 
@@ -26,59 +29,26 @@ type BuildCommand struct {
 }
 
 func (c *BuildCommand) Run(args []string) int {
-	buildCtx, cancelBuildCtx := context.WithCancel(context.Background())
-	// Handle interrupts for this build
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer func() {
-		cancelBuildCtx()
-		signal.Stop(sigCh)
-		close(sigCh)
-	}()
-	go func() {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				// context got cancelled and this closed chan probably
-				// triggered first
-				return
-			}
-			c.Ui.Error(fmt.Sprintf("Cancelling build after receiving %s", sig))
-			cancelBuildCtx()
-		case <-buildCtx.Done():
-		}
-	}()
+	ctx, cleanup := handleTermInterrupt(c.Ui)
+	defer cleanup()
 
-	return c.RunContext(buildCtx, args)
+	cfg, ret := c.ParseArgs(args)
+	if ret != 0 {
+		return ret
+	}
+
+	return c.RunContext(ctx, cfg)
 }
 
-type Config struct {
-	Color, Debug, Force, Timestamp bool
-	ParallelBuilds                 int64
-	OnError                        string
-	Path                           string
-}
-
-func (c *BuildCommand) ParseArgs(args []string) (Config, int) {
-	var cfg Config
-	var parallel bool
+func (c *BuildCommand) ParseArgs(args []string) (*BuildArgs, int) {
+	var cfg BuildArgs
 	flags := c.Meta.FlagSet("build", FlagSetBuildFilter|FlagSetVars)
 	flags.Usage = func() { c.Ui.Say(c.Help()) }
-	flags.BoolVar(&cfg.Color, "color", true, "")
-	flags.BoolVar(&cfg.Debug, "debug", false, "")
-	flags.BoolVar(&cfg.Force, "force", false, "")
-	flags.BoolVar(&cfg.Timestamp, "timestamp-ui", false, "")
-	flagOnError := enumflag.New(&cfg.OnError, "cleanup", "abort", "ask")
-	flags.Var(flagOnError, "on-error", "")
-	flags.BoolVar(&parallel, "parallel", true, "")
-	flags.Int64Var(&cfg.ParallelBuilds, "parallel-builds", 0, "")
+	cfg.AddFlagSets(flags)
 	if err := flags.Parse(args); err != nil {
-		return cfg, 1
+		return &cfg, 1
 	}
 
-	if parallel == false && cfg.ParallelBuilds == 0 {
-		cfg.ParallelBuilds = 1
-	}
 	if cfg.ParallelBuilds < 1 {
 		cfg.ParallelBuilds = math.MaxInt64
 	}
@@ -86,51 +56,141 @@ func (c *BuildCommand) ParseArgs(args []string) (Config, int) {
 	args = flags.Args()
 	if len(args) != 1 {
 		flags.Usage()
-		return cfg, 1
+		return &cfg, 1
 	}
 	cfg.Path = args[0]
-	return cfg, 0
+	return &cfg, 0
 }
 
-func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
-	cfg, ret := c.ParseArgs(args)
+func (m *Meta) GetConfigFromHCL(cla *MetaArgs) (*hcl2template.PackerConfig, int) {
+	parser := &hcl2template.Parser{
+		CorePackerVersion:       version.SemVer,
+		CorePackerVersionString: version.FormattedVersion(),
+		Parser:                  hclparse.NewParser(),
+		PluginConfig:            m.CoreConfig.Components.PluginConfig,
+	}
+	cfg, diags := parser.Parse(cla.Path, cla.VarFiles, cla.Vars)
+	return cfg, writeDiags(m.Ui, parser.Files(), diags)
+}
+
+func writeDiags(ui packersdk.Ui, files map[string]*hcl.File, diags hcl.Diagnostics) int {
+	// write HCL errors/diagnostics if any.
+	b := bytes.NewBuffer(nil)
+	err := hcl.NewDiagnosticTextWriter(b, files, 80, false).WriteDiagnostics(diags)
+	if err != nil {
+		ui.Error("could not write diagnostic: " + err.Error())
+		return 1
+	}
+	if b.Len() != 0 {
+		if diags.HasErrors() {
+			ui.Error(b.String())
+			return 1
+		}
+		ui.Say(b.String())
+	}
+	return 0
+}
+
+func (m *Meta) GetConfig(cla *MetaArgs) (packer.Handler, int) {
+	cfgType, err := cla.GetConfigType()
+	if err != nil {
+		m.Ui.Error(fmt.Sprintf("%q: %s", cla.Path, err))
+		return nil, 1
+	}
+
+	switch cfgType {
+	case ConfigTypeHCL2:
+		// TODO(azr): allow to pass a slice of files here.
+		return m.GetConfigFromHCL(cla)
+	default:
+		// TODO: uncomment once we've polished HCL a bit more.
+		// c.Ui.Say(`Legacy JSON Configuration Will Be Used.
+		// The template will be parsed in the legacy configuration style. This style
+		// will continue to work but users are encouraged to move to the new style.
+		// See: https://packer.io/guides/hcl
+		// `)
+		return m.GetConfigFromJSON(cla)
+	}
+}
+
+func (m *Meta) GetConfigFromJSON(cla *MetaArgs) (packer.Handler, int) {
+	// Parse the template
+	var tpl *template.Template
+	var err error
+	if cla.Path == "" {
+		// here cla validation passed so this means we want a default builder
+		// and we probably are in the console command
+		tpl, err = template.Parse(TiniestBuilder)
+	} else {
+		tpl, err = template.ParseFile(cla.Path)
+	}
+
+	if err != nil {
+		m.Ui.Error(fmt.Sprintf("Failed to parse file as legacy JSON template: "+
+			"if you are using an HCL template, check your file extensions; they "+
+			"should be either *.pkr.hcl or *.pkr.json; see the docs for more "+
+			"details: https://www.packer.io/docs/templates/hcl_templates. \n"+
+			"Original error: %s", err))
+		return nil, 1
+	}
+
+	// Get the core
+	core, err := m.Core(tpl, cla)
+	ret := 0
+	if err != nil {
+		m.Ui.Error(err.Error())
+		ret = 1
+	}
+	return &CoreWrapper{core}, ret
+}
+
+func (c *BuildCommand) RunContext(buildCtx context.Context, cla *BuildArgs) int {
+	packerStarter, ret := c.GetConfig(&cla.MetaArgs)
 	if ret != 0 {
 		return ret
 	}
 
-	// Parse the template
-	var tpl *template.Template
-	var err error
-	tpl, err = template.ParseFile(cfg.Path)
-	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Failed to parse template: %s", err))
-		return 1
+	diags := packerStarter.Initialize(packer.InitializeOptions{})
+	ret = writeDiags(c.Ui, nil, diags)
+	if ret != 0 {
+		return ret
 	}
 
-	// Get the core
-	core, err := c.Meta.Core(tpl)
-	if err != nil {
-		c.Ui.Error(err.Error())
-		return 1
-	}
+	builds, diags := packerStarter.GetBuilds(packer.GetBuildsOptions{
+		Only:    cla.Only,
+		Except:  cla.Except,
+		Debug:   cla.Debug,
+		Force:   cla.Force,
+		OnError: cla.OnError,
+	})
 
-	// Get the builds we care about
-	buildNames := c.Meta.BuildNames(core)
-	builds := make([]packer.Build, 0, len(buildNames))
-	for _, n := range buildNames {
-		b, err := core.Build(n)
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf(
-				"Failed to initialize build '%s': %s",
-				n, err))
-			continue
-		}
+	// here, something could have gone wrong but we still want to run valid
+	// builds.
+	ret = writeDiags(c.Ui, nil, diags)
 
-		builds = append(builds, b)
-	}
-
-	if cfg.Debug {
+	if cla.Debug {
 		c.Ui.Say("Debug mode enabled. Builds will not be parallelized.")
+	}
+
+	// This build currently enforces a 1:1 mapping that one publisher can be assigned to a single packer config file.
+	// It also requires that each config type implements this ConfiguredArtifactMetadataPublisher to return a configured bucket.
+	// TODO find an option that is not managed by a globally shared Publisher.
+	ArtifactMetadataPublisher, diags := packerStarter.ConfiguredArtifactMetadataPublisher()
+	if diags.HasErrors() {
+		return writeDiags(c.Ui, nil, diags)
+	}
+
+	if ArtifactMetadataPublisher != nil {
+		if err := ArtifactMetadataPublisher.Initialize(buildCtx); err != nil {
+			diags := hcl.Diagnostics{
+				&hcl.Diagnostic{
+					Summary:  "HCP Packer Registry initialization failed",
+					Detail:   fmt.Sprintf("Failed to initialize build for %q\n %s", ArtifactMetadataPublisher.Slug, err),
+					Severity: hcl.DiagError,
+				},
+			}
+			return writeDiags(c.Ui, nil, diags)
+		}
 	}
 
 	// Compile all the UIs for the builds
@@ -141,71 +201,51 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 		packer.UiColorYellow,
 		packer.UiColorBlue,
 	}
-	buildUis := make(map[string]packer.Ui)
-	for i, b := range buildNames {
-		var ui packer.Ui
-		ui = c.Ui
-		if cfg.Color {
-			ui = &packer.ColoredUi{
-				Color: colors[i%len(colors)],
-				Ui:    ui,
-			}
+	buildUis := make(map[packersdk.Build]packersdk.Ui)
+	for i := range builds {
+		ui := c.Ui
+		if cla.Color {
+			// Only set up UI colors if -machine-readable isn't set.
 			if _, ok := c.Ui.(*packer.MachineReadableUi); !ok {
-				ui.Say(fmt.Sprintf("%s output will be in this color.", b))
-				if i+1 == len(buildNames) {
+				ui = &packer.ColoredUi{
+					Color: colors[i%len(colors)],
+					Ui:    ui,
+				}
+				ui.Say(fmt.Sprintf("%s: output will be in this color.", builds[i].Name()))
+				if i+1 == len(builds) {
 					// Add a newline between the color output and the actual output
 					c.Ui.Say("")
 				}
 			}
 		}
 		// Now add timestamps if requested
-		if cfg.Timestamp {
+		if cla.TimestampUi {
 			ui = &packer.TimestampedUi{
 				Ui: ui,
 			}
 		}
 
-		buildUis[b] = ui
+		buildUis[builds[i]] = ui
 	}
+	log.Printf("Build debug mode: %v", cla.Debug)
+	log.Printf("Force build: %v", cla.Force)
+	log.Printf("On error: %v", cla.OnError)
 
-	log.Printf("Build debug mode: %v", cfg.Debug)
-	log.Printf("Force build: %v", cfg.Force)
-	log.Printf("On error: %v", cfg.OnError)
-
-	// Set the debug and force mode and prepare all the builds
-	for _, b := range builds {
-		log.Printf("Preparing build: %s", b.Name())
-		b.SetDebug(cfg.Debug)
-		b.SetForce(cfg.Force)
-		b.SetOnError(cfg.OnError)
-
-		warnings, err := b.Prepare()
-		if err != nil {
-			c.Ui.Error(err.Error())
-			return 1
-		}
-		if len(warnings) > 0 {
-			ui := buildUis[b.Name()]
-			ui.Say(fmt.Sprintf("Warnings for build '%s':\n", b.Name()))
-			for _, warning := range warnings {
-				ui.Say(fmt.Sprintf("* %s", warning))
-			}
-			ui.Say("")
-		}
-	}
+	// Get the start of the build command
+	buildCommandStart := time.Now()
 
 	// Run all the builds in parallel and wait for them to complete
 	var wg sync.WaitGroup
 	var artifacts = struct {
 		sync.RWMutex
-		m map[string][]packer.Artifact
-	}{m: make(map[string][]packer.Artifact)}
+		m map[string][]packersdk.Artifact
+	}{m: make(map[string][]packersdk.Artifact)}
+	// Get the builds we care about
 	var errors = struct {
 		sync.RWMutex
 		m map[string]error
 	}{m: make(map[string]error)}
-
-	limitParallel := semaphore.NewWeighted(cfg.ParallelBuilds)
+	limitParallel := semaphore.NewWeighted(cla.ParallelBuilds)
 	for i := range builds {
 		if err := buildCtx.Err(); err != nil {
 			log.Println("Interrupted, not going to start any more builds.")
@@ -214,7 +254,7 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 
 		b := builds[i]
 		name := b.Name()
-		ui := buildUis[name]
+		ui := buildUis[b]
 		if err := limitParallel.Acquire(buildCtx, 1); err != nil {
 			ui.Error(fmt.Sprintf("Build '%s' failed to acquire semaphore: %s", name, err))
 			errors.Lock()
@@ -227,6 +267,9 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 
 		// Run the build in a goroutine
 		go func() {
+			// Get the start of the build
+			buildStart := time.Now()
+
 			defer wg.Done()
 
 			defer limitParallel.Release(1)
@@ -234,14 +277,19 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 			log.Printf("Starting build run: %s", name)
 			runArtifacts, err := b.Run(buildCtx, ui)
 
+			// Get the duration of the build and parse it
+			buildEnd := time.Now()
+			buildDuration := buildEnd.Sub(buildStart)
+			fmtBuildDuration := durafmt.Parse(buildDuration).LimitFirstN(2)
+
 			if err != nil {
-				ui.Error(fmt.Sprintf("Build '%s' errored: %s", name, err))
+				ui.Error(fmt.Sprintf("Build '%s' errored after %s: %s", name, fmtBuildDuration, err))
 				errors.Lock()
 				errors.m[name] = err
 				errors.Unlock()
 			} else {
-				ui.Say(fmt.Sprintf("Build '%s' finished.", name))
-				if nil != runArtifacts {
+				ui.Say(fmt.Sprintf("Build '%s' finished after %s.", name, fmtBuildDuration))
+				if runArtifacts != nil {
 					artifacts.Lock()
 					artifacts.m[name] = runArtifacts
 					artifacts.Unlock()
@@ -249,12 +297,12 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 			}
 		}()
 
-		if cfg.Debug {
+		if cla.Debug {
 			log.Printf("Debug enabled, so waiting for build to finish: %s", b.Name())
 			wg.Wait()
 		}
 
-		if cfg.ParallelBuilds == 1 {
+		if cla.ParallelBuilds == 1 {
 			log.Printf("Parallelization disabled, waiting for build to finish: %s", b.Name())
 			wg.Wait()
 		}
@@ -265,6 +313,12 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 	// if it is interrupted.
 	log.Printf("Waiting on builds to complete...")
 	wg.Wait()
+
+	// Get the duration of the buildCommand command and parse it
+	buildCommandEnd := time.Now()
+	buildCommandDuration := buildCommandEnd.Sub(buildCommandStart)
+	fmtBuildCommandDuration := durafmt.Parse(buildCommandDuration).LimitFirstN(2)
+	c.Ui.Say(fmt.Sprintf("\n==> Wait completed after %s", fmtBuildCommandDuration))
 
 	if err := buildCtx.Err(); err != nil {
 		c.Ui.Say("Cleanly cancelled builds after being interrupted.")
@@ -330,7 +384,9 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 
 				ui.Machine("artifact", iStr, "end")
 				c.Ui.Say(message.String())
+
 			}
+
 		}
 	} else {
 		c.Ui.Say("\n==> Builds finished but no artifacts were created.")
@@ -338,10 +394,10 @@ func (c *BuildCommand) RunContext(buildCtx context.Context, args []string) int {
 
 	if len(errors.m) > 0 {
 		// If any errors occurred, exit with a non-zero exit status
-		return 1
+		ret = 1
 	}
 
-	return 0
+	return ret
 }
 
 func (*BuildCommand) Help() string {
@@ -355,16 +411,15 @@ Options:
 
   -color=false                  Disable color output. (Default: color)
   -debug                        Debug mode enabled for builds.
-  -except=foo,bar,baz           Run all builds and post-procesors other than these.
+  -except=foo,bar,baz           Run all builds and post-processors other than these.
   -only=foo,bar,baz             Build only the specified builds.
   -force                        Force a build to continue if artifacts exist, deletes existing artifacts.
   -machine-readable             Produce machine-readable output.
-  -on-error=[cleanup|abort|ask] If the build fails do: clean up (default), abort, or ask.
-  -parallel=false               Disable parallelization. (Default: true)
-  -parallel-builds=1            Number of builds to run in parallel. 0 means no limit (Default: 0)
+  -on-error=[cleanup|abort|ask|run-cleanup-provisioner] If the build fails do: clean up (default), abort, ask, or run-cleanup-provisioner.
+  -parallel-builds=1            Number of builds to run in parallel. 1 disables parallelization. 0 means no limit (Default: 0)
   -timestamp-ui                 Enable prefixing of each ui output with an RFC3339 timestamp.
   -var 'key=value'              Variable for templates, can be used multiple times.
-  -var-file=path                JSON file containing user variables.
+  -var-file=path                JSON or HCL2 file containing user variables.
 `
 
 	return strings.TrimSpace(helpText)

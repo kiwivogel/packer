@@ -2,83 +2,72 @@ package command
 
 import (
 	"bufio"
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/chzyer/readline"
 	"github.com/hashicorp/packer/helper/wrappedreadline"
+	"github.com/hashicorp/packer/helper/wrappedstreams"
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template"
-	"github.com/hashicorp/packer/template/interpolate"
 	"github.com/posener/complete"
 )
 
-const TiniestBuilder = `{
+var TiniestBuilder = strings.NewReader(`{
 	"builders": [
 		{
 			"type":"null",
 			"communicator": "none"
 		}
 	]
-}`
+}`)
 
 type ConsoleCommand struct {
 	Meta
 }
 
 func (c *ConsoleCommand) Run(args []string) int {
+	ctx := context.Background()
+
+	cfg, ret := c.ParseArgs(args)
+	if ret != 0 {
+		return ret
+	}
+
+	return c.RunContext(ctx, cfg)
+}
+
+func (c *ConsoleCommand) ParseArgs(args []string) (*ConsoleArgs, int) {
+	var cfg ConsoleArgs
 	flags := c.Meta.FlagSet("console", FlagSetVars)
 	flags.Usage = func() { c.Ui.Say(c.Help()) }
+	cfg.AddFlagSets(flags)
 	if err := flags.Parse(args); err != nil {
-		return 1
+		return &cfg, 1
 	}
-
-	var templ *template.Template
 
 	args = flags.Args()
-	if len(args) < 1 {
-		// If user has not defined a builder, create a tiny null placeholder
-		// builder so that we can properly initialize the core
-		tpl, err := template.Parse(strings.NewReader(TiniestBuilder))
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Failed to generate placeholder template: %s", err))
-			return 1
-		}
-		templ = tpl
-	} else if len(args) == 1 {
-		// Parse the provided template
-		tpl, err := template.ParseFile(args[0])
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Failed to parse template: %s", err))
-			return 1
-		}
-		templ = tpl
-	} else {
-		// User provided too many arguments
-		flags.Usage()
-		return 1
+	if len(args) == 1 {
+		cfg.Path = args[0]
+	}
+	return &cfg, 0
+}
+
+func (c *ConsoleCommand) RunContext(ctx context.Context, cla *ConsoleArgs) int {
+	packerStarter, ret := c.GetConfig(&cla.MetaArgs)
+	if ret != 0 {
+		return ret
 	}
 
-	// Get the core
-	core, err := c.Meta.Core(templ)
-	if err != nil {
-		c.Ui.Error(err.Error())
-		return 1
-	}
-
-	// IO Loop
-	session := &REPLSession{
-		Core: core,
-	}
+	_ = packerStarter.Initialize(packer.InitializeOptions{})
 
 	// Determine if stdin is a pipe. If so, we evaluate directly.
 	if c.StdinPiped() {
-		return c.modePiped(session)
+		return c.modePiped(packerStarter)
 	}
 
-	return c.modeInteractive(session)
+	return c.modeInteractive(packerStarter)
 }
 
 func (*ConsoleCommand) Help() string {
@@ -92,7 +81,7 @@ Usage: packer console [options] [TEMPLATE]
 
 Options:
   -var 'key=value'       Variable for templates, can be used multiple times.
-  -var-file=path         JSON file containing user variables.
+  -var-file=path         JSON or HCL2 file containing user variables.
 `
 
 	return strings.TrimSpace(helpText)
@@ -113,13 +102,14 @@ func (*ConsoleCommand) AutocompleteFlags() complete.Flags {
 	}
 }
 
-func (c *ConsoleCommand) modePiped(session *REPLSession) int {
+func (c *ConsoleCommand) modePiped(cfg packer.Evaluator) int {
 	var lastResult string
-	scanner := bufio.NewScanner(wrappedreadline.Stdin())
+	scanner := bufio.NewScanner(wrappedstreams.Stdin())
+	ret := 0
 	for scanner.Scan() {
-		result, err := session.Handle(strings.TrimSpace(scanner.Text()))
-		if err != nil {
-			return 0
+		result, _, diags := cfg.EvaluateExpression(strings.TrimSpace(scanner.Text()))
+		if len(diags) > 0 {
+			ret = writeDiags(c.Ui, nil, diags)
 		}
 		// Store the last result
 		lastResult = result
@@ -127,10 +117,11 @@ func (c *ConsoleCommand) modePiped(session *REPLSession) int {
 
 	// Output the final result
 	c.Ui.Message(lastResult)
-	return 0
+	return ret
 }
 
-func (c *ConsoleCommand) modeInteractive(session *REPLSession) int { // Setup the UI so we can output directly to stdout
+func (c *ConsoleCommand) modeInteractive(cfg packer.Evaluator) int {
+	// Setup the UI so we can output directly to stdout
 	l, err := readline.NewEx(wrappedreadline.Override(&readline.Config{
 		Prompt:            "> ",
 		InterruptPrompt:   "^C",
@@ -155,76 +146,16 @@ func (c *ConsoleCommand) modeInteractive(session *REPLSession) int { // Setup th
 		} else if err == io.EOF {
 			break
 		}
-		out, err := session.Handle(line)
-		if err == ErrSessionExit {
-			break
+		out, exit, diags := cfg.EvaluateExpression(line)
+		ret := writeDiags(c.Ui, nil, diags)
+		if exit {
+			return ret
 		}
-		if err != nil {
-			c.Ui.Error(err.Error())
-			continue
-		}
-
 		c.Ui.Say(out)
+		if exit {
+			return ret
+		}
 	}
 
 	return 0
-}
-
-// ErrSessionExit is a special error result that should be checked for
-// from Handle to signal a graceful exit.
-var ErrSessionExit = errors.New("Session exit")
-
-// Session represents the state for a single Read-Evaluate-Print-Loop (REPL) session.
-type REPLSession struct {
-	// Core is used for constructing interpolations based off packer templates
-	Core *packer.Core
-}
-
-// Handle a single line of input from the REPL.
-//
-// The return value is the output and the error to show.
-func (s *REPLSession) Handle(line string) (string, error) {
-	switch {
-	case strings.TrimSpace(line) == "":
-		return "", nil
-	case strings.TrimSpace(line) == "exit":
-		return "", ErrSessionExit
-	case strings.TrimSpace(line) == "help":
-		return s.handleHelp()
-	case strings.TrimSpace(line) == "variables":
-		return s.handleVariables()
-	default:
-		return s.handleEval(line)
-	}
-}
-
-func (s *REPLSession) handleEval(line string) (string, error) {
-	ctx := s.Core.Context()
-	rendered, err := interpolate.Render(line, ctx)
-	if err != nil {
-		return "", fmt.Errorf("Error interpolating: %s", err)
-	}
-	return rendered, nil
-}
-
-func (s *REPLSession) handleVariables() (string, error) {
-	varsstring := "\n"
-	for k, v := range s.Core.Context().UserVariables {
-		varsstring += fmt.Sprintf("%s: %+v,\n", k, v)
-	}
-
-	return varsstring, nil
-}
-
-func (s *REPLSession) handleHelp() (string, error) {
-	text := `
-The Packer console allows you to experiment with Packer interpolations.
-You may access variables in the Packer config you called the console with.
-
-Type in the interpolation to test and hit <enter> to see the result.
-
-To exit the console, type "exit" and hit <enter>, or use Control-C.
-`
-
-	return strings.TrimSpace(text), nil
 }

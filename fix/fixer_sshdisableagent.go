@@ -8,6 +8,12 @@ import (
 // to "ssh_disable_agent_forwarding".
 type FixerSSHDisableAgent struct{}
 
+func (FixerSSHDisableAgent) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"*": []string{"ssh_disable_agent"},
+	}
+}
+
 func (FixerSSHDisableAgent) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	// The type we'll decode into; we only care about builders
 	type template struct {

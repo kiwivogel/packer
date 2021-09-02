@@ -2,6 +2,12 @@ package fix
 
 // A Fixer is something that can perform a fix operation on a template.
 type Fixer interface {
+	// DeprecatedOptions returns the name(s) of the option(s) being replaced in
+	// this fixer. It is used to generate a list of deprecated options that the
+	// template parser checks against to warn users that they need to call
+	// `packer fix` against their templates after upgrading.
+	DeprecatedOptions() map[string][]string
+
 	// Fix takes a raw map structure input, potentially transforms it
 	// in some way, and returns the new, transformed structure. The
 	// Fix method is allowed to mutate the input.
@@ -44,6 +50,16 @@ func init() {
 		"vmware-compaction":          new(FixerVMwareCompaction),
 		"clean-image-name":           new(FixerCleanImageName),
 		"spot-price-auto-product":    new(FixerAmazonSpotPriceProductDeprecation),
+		"qemu-disk-size":             new(FixerQEMUDiskSize),
+		"galaxy-command":             new(FixerGalaxyCommand),
+		"comm-config":                new(FixerCommConfig),
+		"ssh-wait-timeout":           new(FixerSSHTimout),
+		"docker-tag-tags":            new(FixerDockerTagtoTags),
+		"vsphere-iso-net-disk":       new(FixerVSphereNetworkDisk),
+		"iso-checksum-type-and-url":  new(FixerISOChecksumTypeAndURL),
+		"qemu-host-port":             new(FixerQEMUHostPort),
+		"azure-exclude_from_latest":  new(FixerAzureExcludeFromLatest),
+		"proxmox-type":               new(FixerProxmoxType),
 	}
 
 	FixerOrder = []string{
@@ -64,6 +80,7 @@ func init() {
 		"amazon-private-ip",
 		"amazon-temp-sec-cidrs",
 		"docker-email",
+		"docker-tag-tags",
 		"powershell-escapes",
 		"vmware-compaction",
 		"hyperv-deprecations",
@@ -71,5 +88,14 @@ func init() {
 		"hyperv-cpu-and-ram",
 		"clean-image-name",
 		"spot-price-auto-product",
+		"qemu-disk-size",
+		"galaxy-command",
+		"comm-config",
+		"ssh-wait-timeout",
+		"vsphere-iso-net-disk",
+		"iso-checksum-type-and-url",
+		"qemu-host-port",
+		"azure-exclude_from_latest",
+		"proxmox-type",
 	}
 }

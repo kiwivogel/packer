@@ -1,6 +1,1365 @@
-## 1.4.4 (Upcoming)
+## 1.7.5 (Upcoming)
+
+## 1.7.4 (July 20, 2021)
+
+### BUG FIXES:
+
+* builder/outscale: Update Outscale multi-component plugin to fix `go build`
+    failures due to missing Go module dependencies. [GH-11147]
+
+## 1.7.3 (June 15, 2021)
 
 ### IMPROVEMENTS:
+
+We've extracted a majority of HashiCorp-maintained and community plugins from the Packer Core repository. They now live in their own multi-component plugin repositories. This is not a breaking change as we are enabling backwards compatibility in this release by vendoring components back into Packer.
+However, we encourage users to begin using `packer init` to download and install plugins to get the latest updates to each plugin, and to prepare for Packer v2.0 when we will stop vendoring the above plugins into the main Packer binary.
+
+The following repositories have been created, and their components have been deleted from the "github.com/hashicorp/packer" repository.
+
+* "github.com/hashicorp/packer-plugin-alicloud" [GH-10932]
+* "github.com/hashicorp/packer-plugin-amazon" [GH-10800]
+* "github.com/hashicorp/packer-plugin-ansible" [GH-10912]
+* "github.com/hashicorp/packer-plugin-azure" [GH-10979]
+* "github.com/hashicorp/packer-plugin-chef" [GH-10921]
+* "github.com/hashicorp/packer-plugin-cloudstack" [GH-10934]
+* "github.com/hashicorp/packer-plugin-converge" [GH-10956]
+* "github.com/hashicorp/packer-plugin-digitalocean" [GH-10961]
+* "github.com/hashicorp/packer-plugin-docker" [GH-10695]
+* "github.com/hashicorp/packer-plugin-googlecompute" [GH-10890]
+* "github.com/hashicorp/packer-plugin-hcloud" [GH-10966]
+* "github.com/hashicorp/packer-plugin-hyperone" [GH-10949]
+* "github.com/hashicorp/packer-plugin-hyperv" [GH-10949]
+* "github.com/hashicorp/packer-plugin-inspec"
+* "github.com/hashicorp/packer-plugin-ionos-cloud"
+* "github.com/hashicorp/packer-plugin-jdcloud" [GH-10946]
+* "github.com/hashicorp/packer-plugin-linode" [GH-10947]
+* "github.com/hashicorp/packer-plugin-lxc" [GH-10965]
+* "github.com/hashicorp/packer-plugin-lxd" [GH-10965]
+* "github.com/hashicorp/packer-plugin-ncloud" [GH-10937]
+* "github.com/hashicorp/packer-plugin-openstack" [GH-10933]
+* "github.com/hashicorp/packer-plugin-oracle" [GH-10962]
+* "github.com/hashicorp/packer-plugin-outscale" [GH-10941]
+* "github.com/hashicorp/packer-plugin-parallels" [GH-10936]
+* "github.com/hashicorp/packer-plugin-profitbricks" [GH-11084]
+* "github.com/hashicorp/packer-plugin-proxmox" [GH-10930]
+* "github.com/hashicorp/packer-plugin-puppet" [GH-10943]
+* "github.com/hashicorp/packer-plugin-qemu" [GH-10929]
+* "github.com/hashicorp/packer-plugin-salt"
+* "github.com/hashicorp/packer-plugin-scaleway" [GH-10939]
+* "github.com/hashicorp/packer-plugin-tencentcloud" [GH-10967]
+* "github.com/hashicorp/packer-plugin-triton" [GH-10963]
+* "github.com/hashicorp/packer-plugin-ucloud" [GH-10953]
+* "github.com/hashicorp/packer-plugin-vagrant" [GH-10960]
+* "github.com/hashicorp/packer-plugin-virtualbox" [GH-10910]
+* "github.com/hashicorp/packer-plugin-vmware" [GH-10920]
+* "github.com/hashicorp/packer-plugin-vsphere" [GH-10896]
+* "github.com/hashicorp/packer-plugin-yandex" [GH-10970]
+
+The following components will not be removed from the main packer binary:
+
+* `null` builder
+* `file` builder
+* `breakpoint` provisioner
+
+* `file` provisioner
+* `powershell` provisioner
+* `shell` provisioner
+* `shell-local` provisioner
+* `sleep` provisioner
+* `windows-restart` provisioner
+* `windows-shell` provisioner
+
+* `artifice` post-processor
+* `checksum` post-processor
+* `compress` post-processor
+* `manifest` post-processor
+* `shell-local` post-processor
+
+### Bug Fixes:
+* builder/azure: Add `keep_os_disk` parameter to control OS disk deletion
+    [GH-10045]
+* builder/azure: Stop SIG timout from being overridden by PollingDuration
+    [GH-10816]
+* builder/azure: Support shared image gallery storage account type [GH-10863]
+* builder/proxmox: Proxmox builder use ipv4 address instead of always ipv6.
+    [GH-10858]
+* core/hcl2_upgrade: Allow hcl2_upgrade continue with unknown builders.
+    [GH-11049]
+* core/hcl2_upgrade: Improve regex to fix escaping on split function.
+    [GH-11083]
+* core/hcl: Fix Invalid provisioner pause_before panic [GH-10978]
+* core: HCL "index" function now actually returns the index of the element
+    [GH-11008]
+* core: Implemented DEFAULT_NAME handling for datasource plugins [GH-11026]
+
+### Enhancements:
+
+* builder/azure:  Added custom nicname and osdiskname [GH-10938]
+* builder/azure: Add support for shared image gallery storage account type
+    [GH-10863]
+* builder/digitalocean: support ecdsa, ed25519, dsa temporary key types.
+    [GH-10856]
+* builder/ncloud: Support ncloud vpc version [GH-10870]
+* core/fmt: When reading from stdin `packer fmt` will output the contents of
+    the formatted file even if the input was already formatted. [GH-11047]
+* core/hcl: HCL variables are now supported within the `name`, `only`,
+    `except`, and `keep_input_artifact` fields for post-processor blocks.
+    [GH-11094]
+* core/hcl: Running `packer build` with an `-only` or `-exclude` flag will now
+    inform the user if no match was found. [GH-11050]
+* post-processor/compress: Add bzip2 support to post-processor [GH-10867]
+* post-processor/googlecompute-import: Add Image Storage Locations field
+    [GH-10864]
+* Removed the golang "vendor" directory in favor of go modules. This should not
+    affect end users. [GH-10916]
+
+## 1.7.2 (April 05, 2021)
+
+### IMPROVEMENTS:
+
+* builder/alicloud: Add `ramrole` configuration to ECS instance. [GH-10845]
+
+### BUG FIXES:
+
+* builder/proxmox: Update Proxmox Go API to ensure only the first non-loopback
+    IPv4 address gets returned. [GH-10858]
+* builder/vsphere: Fix primary disk resize on clone. [GH-10848]
+* core: Fix bug where call to "packer version" sent output to stderr instead of
+    stdout. [GH-10850]
+
+## 1.7.1 (March 31, 2021)
+
+### NOTES:
+
+* builder/amazon: Has been vendored in this release and will no longer be
+    updated with Packer core. In Packer v1.8.0 the plugin will be removed
+    entirely. The `amazon` components will continue to work as expected until
+    then, but for the latest offerings of the Amazon plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* builder/docker: Has been vendored in this release and will no longer be
+    updated with Packer core. In Packer v1.8.0 the plugin will be removed
+    entirely. The `docker` builder will continue to work as expected until
+    then, but for the latest offerings of the Docker plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* darwin/arm64: Packer now includes the darwin/arm64 binary to its releases to
+    supports the new OSX M1. [GH-10804]
+* post-processor/docker-\*: Have been vendored in this release and will no
+    longer be updated with Packer core. In Packer v1.8.0 the plugin will be
+    removed entirely. The `docker` builder will continue to work as expected
+    until then, but for the latest offerings of the Docker plugin, users are
+    encourage to use the `packer init` command to install the latest release
+    version. For more details see [Installing Packer
+    Plugins](https://www.packer.io/docs/plugins#installing-plugins)
+* post-processor/exoscale-import: Has been vendored in this release and will no
+    longer be updated with Packer core. In Packer v1.8.0 the plugin will be
+    removed entirely. The `exoscale-import` post-processor will continue to
+    work as expected until then, but for the latest offerings of the Exoscale
+    plugin, users are encourage to use the `packer init` command to install the
+    latest release version. For more details see [Exoscale Plugin
+    Repostiroy](https://github.com/exoscale/packer-plugin-exoscale). [GH-10709]
+
+### IMPROVEMENTS
+* builder/amazon: allow creation of ebs snapshots without volumes. [GH-9591]
+* builder/amazon: Fix issue for multi-region AMI build that fail when
+    encrypting with KMS and sharing across accounts. [GH-10754]
+* builder/azure: Add client_cert_token_timeout option. [GH-10528]
+* builder/google: Make Windows password timeout configurable. [GH-10727]
+* builder/google: Update public GCP image project as gce-uefi-images are
+    deprecated. [GH-10724]
+* builder/oracle-oci: Update Oracle Go SDK to add support for OCI flexible
+    shapes.  [GH-10833]
+* builder/proxmox: Allow using API tokens for Proxmox authentication.
+    [GH-10797]
+* builder/qemu: Added firmware option. [GH-10683]
+* builder/scaleway: add support for timeout in shutdown step. [GH-10503]
+* builder/vagrant: Fix logging to be clearer when Vagrant builder overrides
+    values retrieved from vagrant's ssh_config call. [GH-10743]
+* builder/virtualbox:  Added ISO builder option to create additional disks.
+    [GH-10674]
+* builder/virtualbox: Add options for nested virtualisation and RTC time base.
+    [GH-10736]
+* builder/virtualbox: Add template options for chipset, firmware, nic, graphics
+    controller, and audio controller. [GH-10671]
+* builder/virtualbox: Support for "virtio" storage and ISO drive. [GH-10632]
+* builder/vmware: Added "attach_snapshot" parameter to vmware vmx builder.
+    [GH-10651]
+* command/fmt: Adding recursive flag to formatter to format subdirectories.
+    [GH-10457]
+* core/hcl2: Add legacy_isotime function. [GH-10780]
+* core/hcl2: Add support for generating `dynamic` blocks within a `build`
+    block. [GH-10825]
+* core/hcl2: Add templatefile function. [GH-10776]
+* core/hcl2_upgrade: hcl2_upgrade command can now upgrade json var-files.
+    [GH-10676]
+* core/init: Add implicit required_plugin blocks feature. [GH-10732]
+* core: Add http_content option to serve variables from HTTP at preseed.
+    [GH-10801]
+* core: Change template parsing error to include warning about file extensions.
+    [GH-10652]
+* core: Update to gopsutil v3.21.1 to allow builds to work for darwin arm64.
+    [GH-10697]
+* provisioner/inspec: Allow non-zero exit codes for inspec provisioner.
+    [GH-10723]
+
+### BUG FIXES
+* buider/azure: Update builder to ensure a proper clean up Azure temporary
+    managed Os disks. [GH-10713]
+* builder/amazon: Update amazon SDK to fix an SSO login issue. [GH-10668]
+* builder/azure: Don't overwrite subscription id if unset. [GH-10659]
+* builder/azure: Set default for the parameter client_cert_token_timeout
+    [GH-10783]
+* builder/google: Add new configuration field `windows_password_timeout` to
+    allow user to set configurable timeouts. [GH-10727]
+* builder/hyperv: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/openstack: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/oracle-oci: Update Oracle Go SDK to fix issue with reading key file.
+    [GH-10560] [GH-10774]
+* builder/outscale: Fix omi_description that was ignored in Osc builder
+    [GH-10792]
+* builder/parallels: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/proxmox: Fixes issue when using `additional_iso_files` in HCL enabled
+    templates. [GH-10772]
+* builder/qemu: Make Packer respect winrm_host flag in winrm connect func.
+    [GH-10748]
+* builder/virtualbox: Make Packer respect winrm_host flag in winrm connect
+    func. [GH-10748]
+* builder/vmware: Added a fallback file check when trying to determine the
+    network-mapping configuration. [GH-10543]
+* builder/vsphere: Fix invalid device configuration issue when creating a
+    vm with multiple disk on the same controller. [GH-10844]
+* builder/vsphere: Fix issue where boot command would fail the build do to a
+    key typing error. This change will now retry to type the key on error
+    before giving up. [GH-10541]
+* core/hcl2_upgrade: Check for nil config map when provisioner/post-processor
+    doesn't have config. [GH-10730]
+* core/hcl2_upgrade: Fix escaped quotes in template functions [GH-10794]
+* core/hcl2_upgrade: Make hcl2_upgrade command correctly translate
+    pause_before. [GH-10654]
+* core/hcl2_upgrade: Make json variables using template engines get stored as
+    locals so they can be properly interpolated. [GH-10685]
+* core/init: Fixes issue where `packer init` was failing to install valid
+    plugins containing a 'v' within its name. [GH-10760]
+* core: Packer will now show a proper error message when failing to load the
+    contents of PACKER_CONFIG. [GH-10766]
+* core: Pin Packer to Golang 1.16 to fix code generation issues. [GH-10702]
+* core: Templates previously could not interpolate the environment variable
+    PACKER_LOG_PATH. [GH-10660]
+* post-processor/vagrant-cloud: Override direct upload based on box size
+    [GH-10820]
+* provisioner/chef-solo: HCL2 templates can support the json_string option.
+    [GH-10655]
+* provisioner/inspec: Add new configuration field `valid_exit_codes` to allow
+    for non-zero exit codes. [GH-10723]
+* provisioner/salt-masterless: Update urls for the bootstrap scripts used by
+    salt-masterless provide. [GH-10755]
+
+## 1.7.0 (February 17, 2021)
+
+### FEATURES
+* **New Command** (HCL only) `packer init` command will download plugins defined
+    in a new `required_plugins` block [GH-10304] [GH-10633].
+* **New Plugin Type** Data sources can be implemented (blog post forthcoming).
+    [GH-10440]
+* **New Plugin** Aws Secrets Manager data source [GH-10505] [GH-10467]
+
+### BACKWARDS INCOMPATIBILITIES
+* core: The API that the Packer core uses to communicate with community plugins
+    has changed; maintainers of community plugins will need to upgrade their
+    plugins in order to make them compatible with v1.7.0. An upgrade guide will
+    be available on our guides page https://www.packer.io/guides.
+
+### IMPROVEMENTS
+* builder/amazon: Add `skip_create_ami` option for testing and situations where
+    artifact is not the ami. [GH-10531]
+* builder/amazon: Add IMDSv2 support for AWS EBS builder. [GH-10546]
+* builder/amazon: Add resource tags in the launch template used to request spot
+    instances. [GH-10456]
+* builder/openstack:  Add `skip_create_image` option for testing and situations
+    where artifact is not the image. [GH-10496]
+* builder/oracle-oci: Add retry strategies to oci calls [GH-10591]
+* core/fmt: The `packer fmt` can now read from stdin. [GH-10500]
+* core/hcl: Add regex and regexall hcl2 template functions. [GH-10601]
+* core/hcl: Templates now support "sensitive" locals. [GH-10509]
+* core/hcl: Templates now support error-cleanup-provisioner. [GH-10604]
+* hcl2_upgrade: Command now comes with a flag so you can control whether output
+    templates are annotated with helpful comments. [GH-10619]
+* hcl2_upgrade: Command now gracefully handles options with template engine
+    interpolations. [GH-10625]
+* hcl2_upgrade: Command will convert amazon filters to use the ami data source.
+    [GH-10491]
+
+### BUG FIXES
+* amazon/ebssurrogate: Apply snapshot tags at same time as when taking
+    snapshot. [GH-10150]
+* builder/amazon: Fix bug where validation fails if optional iops value is
+    unset. [GH-10518]
+* builder/amazon: Wrap API call to get filtered image in a retry. [GH-10610]
+* builder/bsusurrogate: override bsu when omi root device is set. [GH-10490]
+* builder/google: Fix bug where Packer would fail when run by users who do not
+    have permission to access the metadata, even though the metadata is not
+    necessary to the run. [GH-10458]
+* builder/profitbricks: Profitbricks builder could not connect using SSH
+    communicator. [GH-10549]
+* builder/proxmox: Ensure ISOs in additional_iso_files are mounted during VM
+    creation. [GH-10586]
+* builder/proxmox: Improve cloud init error logging for proxmox builder.
+    [GH-10499]
+* builder/qemu: Fix bug where vnc_min_port set to value greater then 5900 could
+    prevent Packer from connecting to QEMU. [GH-10450] [GH-10451]
+* builder/qemu: Fix regression with cd indexing when disk_interface is `ide`.
+    [GH-10519]
+* builder/vmware-esx: Skip credential validation, which requires ovftool to be
+    installed, if we are not exporting an image. [GH-10520]
+* builder/yandex: Fix cloud-init config for ubuntu 20.04. [GH-10522]
+* builder/yandex: Fix incorrect access to `instance_id`. [GH-10522]
+* core/hcl: Fix bug where []uint8 types could not be passed to plugins.
+* core/hcl: fix bug where HCL core could not handle passing []uint8 to plugins.
+    [GH-10516]
+* core/hcl: Fix force flag for hcl2 provisioners and post-processors.
+    [GH-10571]
+* post-processor/vsphere: Fix regression where Packer would not check the exit
+    status after streaming UI from the ovftool command. [GH-10468]
+* post-processor/yandex-export: Changed dhclient command and supported
+    configuring disk for exportupdate-dump-method. Also added support for
+    `file` builder. [GH-10488]
+
+## 1.6.6 (December 16, 2020)
+
+### FEATURES
+* **New command** `fmt` allows users to format existing HCL2 configuration
+    files into a canonical style. Please see [fmt command
+    docs](https://packer.io/docs/commands/fmt) for more details. [GH-10225]
+    [GH-10377]
+* **New function** `env` allows users to set the default value of a variable to
+    the value of an environment variable. Please see [env function
+    docs](https://www.packer.io/docs/templates/hcl_templates/functions/contextual/env) for
+    more details. [GH-10240]
+* **Future Scaffolding** This release contains a large number of no-op
+    refactoring changes. The Packer team at HashiCorp is preparing to split the
+    plugins and core to make it easier for our third party maintainers and
+    community members to release and maintain plugins, just like HashiCorp did
+    with the Terraform Core-Provider split. The Packer team is committed to
+    making sure that this split is seamless for our users and for our community
+    maintainers -- if you are a community maintainer, you may want to follow
+    along with some of the work by looking at the
+    [core-plugin-split github tag.](https://github.com/hashicorp/packer/pulls?q=is%3Apr+label%3Acore-plugin-split)
+    No one needs to do anything, yet, but we felt it was worth calling out all
+    the work that isn't making it into the changelog. We will be following up
+    with lots of documentation and communication in early 2021 with more
+    information.
+
+### IMPROVEMENTS
+* builder/amazon-ebs: Add tags to launch templates. [GH-10203]
+* builder/amazon: Add support for Amazon EBS gp3 volumes. [Gh-10338]
+* builder/amazon: Increase default max_retries to lessen throttling issues.
+    [GH-10290]
+* builder/amazon: Support AWS gp3 volumes [GH-10338]
+* builder/amazon: Support root volume encryption for amazon-chroot. [GH-10243]
+* builder/amazon: Validate IOPS ratio. [GH-10199]
+* builder/azure-arm: Add Azure CLI authentication support to builder.
+    [GH-10157]
+* builder/azure-arm: Create keyvaults with SoftDelete enabled. [GH-10210]
+* builder/digitalocean: New option to provision with private ip. [GH-10093]
+* builder/google: Add `wait_to_add_ssh_keys` option to delay the addition of
+    SSH configuration that may be disrupted during an instance boot sequence.
+    [GH-10320]
+* builder/google: Add support for creating shielded VMs. [GH-10172]
+* builder/googlecompute-export: Add logging.write to service account scopes.
+    [GH-10316]
+* builder/oracle-oci: Support image launch mode. [GH-10212]
+* builder/outscale: Add outscale.hk endpoint support [GH-10207]
+* builder/outscale: Add x509 certificate support. [GH-10161]
+* builder/proxmox: New config option for boot-order. [GH-10260]
+* builder/scaleway: Use the SDK functions to load profile from file and env.
+    [GH-10181]
+* builder/virtualbox: Allow attaching guest additions with "none" communicator.
+    [GH-10306]
+* builder/vmware: Make compatible with MacOS BigSur by using Apple DHCP leases
+    instead of VMWare leases [GH-10384]
+* builder/vsphere: New option to add additional storage to a cloned vm.
+    [GH-10287]
+* builder/yandex: More resilient image mounting and initialization. [GH-10335]
+* builder/yandex: Update user-data to not use cloud-config fields to prevent
+    possible user data collisions. [GH-10385]
+* core/hcl: Update to `hcl2_upgrade` command to support complex variable values
+    and packer version blocks. [GH-10221]
+* hcl2upgrade: Update command to fix `env` call upgrade. [GH-10244]
+* post-processor/vagrant-cloud: Add support for uploading directly to storage
+    on Vagrant Cloud. [GH-10193]
+* post-processor/yandex-export: Add retries and wait after disk attach
+    operation. [GH-10303]
+* post-processor/yandex-export: Show progress on export. [GH-10368]
+* post-processor/yandex-export: Use ssh communicator in export. [GH-10352]
+* post-processor/yandex-export: Verify the access to a specific bucket.
+    [GH-10188]
+* provisioner/salt-masterless: Call winrepo.update_git_repos and
+    pkg.refresh_db. [GH-10201]
+
+### BUG FIXES
+* builder/amazon: Fix retry logic in AWS spot instance tagging. [GH-10394]
+* builder/amazon: Fix single `tag` interpolation to allow for templating engine
+    usage. [GH-10224]
+* builder/google: Fix crash when using the `-on-error` build flag. [GH-10247]
+* builder/google: Fix issue with service account detection when running Packer
+    on a compute instance with `use_os_login` enabled. [GH-10360]
+* builder/qemu: Fix duplication of main disk when setting "disk_image: true".
+    [GH-10337]
+* builder/qemu: Fix nil pointer dereference when loading values from state.
+    [GH-10249]
+* builder/qemu: Fix panic when disk_image=true and source image has no file
+    extension. [GH-10226]
+* builder/vagrant: Return error if ssh-config command fails. [GH-10213]
+* builder/vsphere: WaitForIP should not return an error if an IP is not found
+    [GH-10321]
+* builder/yandex: Change disk creation method to manual. [GH-10250]
+* builder/yandex: Fix issue with UserAgent string. [GH-10361]
+* builder/yandex: Fixed using cloud config when using IPv6. [GH-10297]
+* core/hcl: Ensure the `reverse` function does not break when given a value of
+    type list. [GH-10380]
+* post-processor/yandex-export: Check service account id. [GH-10305]
+
+## 1.6.5 (October 30, 2020)
+
+### FEATURES:
+* New Builder(s): Proxmox builder has been split into two new builders
+    `proxmox-iso` and `promox-clone`. See [Proxmox
+    Builder](https://packer.io/docs/builders/proxmox) for more information on
+    the builder. For users of the previous `proxmox` builder please use `packer
+    fix` to migrate your templates to the new `promox-iso` builder. [GH-9262]
+
+### BUG FIXES:
+
+* builder/amazon: SSM connection now recovers from reboots. [GH-10003]
+* builder/azure-arm: Fix build failures due to the deletion of additional
+    managed disks defined in "disk_additional_size". [GH-10163]
+* builder/azure-chroot: Fix typo in option `exlude_from_latest` to
+    `exclude_from_latest`. Old name will still be respected. [GH-10034]
+* builder/googlecompute: Fix HCL image_encryption_key fields and use the same
+    casing in JSON and HCL2 [GH-10173]
+* builder/openstack: Fix source image validation regression when using filters.
+    [GH-10065]
+* builder/proxmox: Fix unhandled buildvar type for HCL2 enabled build
+    templates. [GH-10154]
+* builder/qemu: Fix a regression where Packer would not wait properly in
+    step_shutdown when a null communicator was used. [GH-10178]
+* builder/qemu: Fix crash in step_run of qemu when loading commhostport form
+    the statebag in a situation where the communicator is none. [GH-10145]
+* builder/vsphere-clone: Packer was not respecting the "destroy" flag set in
+    the content library config, and always keeping the source vm. This has been
+    fixed. [GH-10165]
+* builder/vsphere: Ensure builds are able to continue when no communicator has
+    been specified `"communicator": "none"`. [GH-9964]
+* builder/vsphere: Fix CD uploads so that Packer does not try to delete a CD
+    that was not successfully uploaded. [GH-10155]
+* core/hcl: Hide sensitive variables from output. [GH-10031]
+* core/hcl: Packer HCL's "Coalesce" function now behaves same way as
+    Terraform's. [GH-10016]
+* core: Fix artifact handling so that input artifacts are properly preserved in
+    postprocessors that don't modify artifacts. [GH-9996]
+* core: Fix pathing in cd_files to copy proper directory tree when user
+    provided absolute paths. [GH-10022]
+* provisioner/ansible: Ansible galaxy no longer forces use of collections in v1
+    files. [GH-10010]
+
+### IMPROVEMENTS:
+
+* builder/amazon-ebssurrogate: Apply snapshot tags at snapshot creation time.
+    [GH-10150]
+* builder/amazon: Add `io2` as a supported volume type. [GH-10102]
+* builder/amazon: Add support for source instance tenancy [GH-10085]
+* builder/google: Add service account impersonation. [GH-9968] [GH-10054]
+* builder/googlecompute: Add `skip_create_image` option. [GH-10115]
+* builder/googlecompute: Allow users to select the algorithm to use when
+    generating temporary SSH keypair [GH-10111]
+* builder/linode: Add `state_timeout` attribute to Linode builder. [GH-10128]
+* builder/oracle-oci:  New option to specify image compartment separate from
+    build compartment. [GH-10040]
+* builder/oracle-oci: New option to specify boot volume size. [GH-10017]
+* builder/oracle: Add `base_image_filter` option as alternative to
+    `base_image_ocid` [GH-10116]
+* builder/outscale: Migrate to new Outscale SDK. [GH-10056]
+* builder/proxmox: split Proxmox into proxmox-iso and proxmox-clone. [GH-9626]
+    [GH-10166]
+* builder/scaleway: Allow the user to use an image label (eg ubuntu_focal)
+    instead of a hardcoded UUID on the Scaleway builder. [GH-10061]
+* builder/vsphere: Skip iso download if hashed file is already present on
+    remote datastore. [GH-10143]
+* builder/yandex: Add support for IAM credentials in the token field and
+    YC_TOKEN environment variable. [GH-10158]
+* core/hcl: Add ability to set version restrictions [GH-10149]
+* core/hcl: Add build.name variable so users can access build name in addition
+    to source name. [GH-10114]
+* core/hcl: Add consul_key function to HCL templates. [GH-10119]
+* core/hcl: Add HCL2 aws_secretsmanager function [GH-10124]
+* core/hcl: Add packer.version variable to hcl configs so users can access the
+    Packer release version. [GH-10117]
+* core: Let user provide type of generated ssh key instead of always doing ssh-
+    rsa [GH-10101]
+
+## 1.6.4 (September 30, 2020)
+
+### BUG FIXES:
+* builder/amazon: Fix authentication issue when using instance profiles or
+    assumed roles for loading session-derived credentials. [GH-10007]
+* builder/azure: Fix crash when using `azure_tag` or `azure_tags` configuration
+    options. [GH-10014]
+* builder/qemu: Ensure `qemu_img_args` are honored during the disk convert
+    step. [GH-10001]
+
+ ## 1.6.3 (September 25, 2020)
+
+### IMPROVEMENTS:
+* builder/amazon: Add `pause_before_ssm` option to pause for some time before
+    establishing a Session Manager session; defaults to 10s. [GH-9988]
+* builder/amazon: Implement assume_role option that matches Terraform behavior.
+    [GH-9981]
+* builder/azure: Support publishing to a Shared Image Gallery with a different
+    subscription id [GH-9875]
+* builder/openstack: Add `external_source_image_url` and
+    `external_source_image_format` to support building images from external
+    source URLs. [GH-9992]
+* builder/openstack: Include API requests and responses as part of the debug
+    log output. [GH-9972]
+* builder/oracle-oci: Add `create_vnic_details` option for launch details.
+    [GH-9856]
+* builder/oracle-oci: Allow freeform and defined tags to be added to an instance.
+    [GH-9802]
+* builder/proxmox: Add `io_thread` option for supporting io threads when using
+    a `virtio-scsi-single` controller with a `scsi` or `virtio` disk type.
+    [GH-9969]
+* builder/proxmox: Add ability to specify interfaces for http_directory and VM.
+    [GH-9874]
+* builder/proxmox: Allow the mounting of multiple ISOs via the `cd_drive`
+    option. [GH-9653]
+* builder/proxmox: Fix boot command special keys. [GH-9885]
+* builder/qemu: Add `qemu_img_args` option to set special cli flags for calls
+    to qemu-img [GH-9956]
+* builder/qemu: Add `skip_resize_disk` option to skip the resizing of QCOW2
+    images. [GH-9896] [GH-9860]
+* builder/qemu: Skip qemu-img convert on MacOS to prevent the creation of
+    corrupt images [QEMU
+    #1776920](https://bugs.launchpad.net/qemu/+bug/1776920) [GH-9949]
+* builder/scaleway: Change default boottype to local. [GH-9853]
+* builder/scaleway: Update scaleway to use non-deprecated sdk. [GH-9902]
+* builder/vmware: Add `vnc_over_websocket` to allow the sending of a
+    `boot_command` to hosts running ESXi 6.7 and above. [GH-9938]
+* builder/vmware: Allow user to set vmware tools source path. [GH-9983]
+* builder/vsphere-clone: Add ability to set `mac_address` [GH-9930]
+* builder/vsphere-clone: Add floppy_files, cd_files, and iso_paths options.
+    [GH-9963]
+* builder/vsphere-iso: Add NVMe controller support. [GH-9880]
+* builder/vsphere: Look for a default resource pool when root resource pool is
+    not found. [GH-9809]
+* core: Add support for running cygwin/msys2 based cd/iso creation tool
+    [GH-9954]
+* core: New `cd_files` option to mount iso for modern OSes which don't support
+    floppies. [GH-9796] [GH-9919] [GH-9928] [GH-9932] [GH-9941]
+* HCL2: When the type of a variable is not known evaluate setting as a literal
+    string instead of a variable name. [GH-9863]
+* post-processor/vagrant: Support the use of template variables within
+    Vagrantfile templates. [GH-9923]
+* post-processor/yandex-import: Allow custom API endpoint. [GH-9850]
+* provisioner/ansible: Add support for Ansible Galaxy Collections. [GH-9903]
+
+### BUG FIXES:
+* builder/amazon-ebs: Fix issue where retrying on invalid IAM instance profile
+    error was creating multiple spot instances. [GH-9946]
+* builder/amazon-ebssurrogate: Fix issue where builder defaults to AWS managed
+    key even when custom `kms_key_id` is set. [GH-9959]
+* builder/amazon: Update ssm_driver log polling logic to prevent infinite loops
+    when SSM driver is terminated outside of Packer. [GH-9991]
+* builder/azure: Fix crash when using HCL2 configs. [GH-9984] [GH-9985]
+* builder/qemu: Fix hardcoded lowerbound causing negative ports [GH-9905]
+* builder/qemu: Skip compaction when backing file is used. [GH-9918]
+* builder/scaleway: Add pre validate step to prevent the creation of multiple
+    images with the same name. [GH-9840]
+* builder/vmware-iso: Prevent the use of reserved SCSI ID 0:7 when attaching
+    multiple disks. [GH-9940]
+* builder/vsphere: Fix overly strict iso_path validation regex. [GH-9855]
+* command/console: Prevent failure when there are unknown vars. [GH-9864]
+* command/inspect: Allow unset variables in HCL2 and JSON. [GH-9832]
+* core: Prevent the UI progressbar from hanging and crashing when there is no
+    TTY available. [GH-9974]
+* core: Use $APPDATA over $HOME on Windows hosts when determining homedir.
+    [GH-9830]
+* post-processor/digitalocean-import: Fix crash caused by empty artifact.Files
+    slice. [GH-9857]
+* post-processor/yandex-export: Check for error after runner completes.
+    [GH-9925]
+* post-processor/yandex-export: Set metadata key to expected value on error.
+    [GH-9849]
+* post-processor/yandex-import: Fix S3 URL construct process. [GH-9931]
+
+## 1.6.2 (August 28, 2020)
+
+### FEATURES:
+* **New command** `hcl2_upgrade` is a JSON to HCL2 transpiler that allows users
+    to transform an existing JSON configuration template into its HCL2 template
+    equivalent. Please see [hcl2_upgrade command
+    docs](https://packer.io/docs/commands/hcl2_upgrade) for more details.
+    [GH-9659]
+
+### IMPROVEMENTS:
+* builder/amazon:  Add all of the custom AWS template engines to `build`
+    template function for use by provisioners. [GH-9751]
+* builder/amazon: Add aws_polling config option to override env variables.
+    [GH-9777]
+* builder/azure: Add FreeBSD support to azure/chroot builder. [GH-9697]
+* builder/vmware-esx: Add `network_name` option to vmware so that users can set
+    a network without using vmx data. [GH-9718]
+* builder/vmware-vmx: Add additional disk configuration option.  Previously
+    only implemented for vmware-iso builder [GH-9815]
+* builder/vmware: Add a `remote_output_directory option` so users can tell
+    Packer where on a datastore to create a vm. [GH-9784]
+* builder/vmware: Add option to export to ovf or ova from a local vmware build
+    [GH-9825]
+* builder/vmware: Add progress tracker to vmware-esx5 iso upload. [GH-9779]
+* builder/vsphere-iso:  Add support for building on a single ESXi host
+    [GH-9793]
+* builder/vsphere: Add new `directory_permission` config export option.
+    [GH-9704]
+* builder/vsphere: Add option to import OVF templates to the Content Library
+    [GH-9755]
+* builder/vsphere: Add step and options to customize cloned VMs. [GH-9665]
+* builder/vsphere: Update `iso_paths` to support reading ISOs from Content
+    Library paths [GH-9801]
+* core/hcl: Add provisioner "override" option to HCL2 templates. [GH-9764]
+* core/hcl: Add vault integration as an HCL2 function function. [GH-9746]
+* core: Add colored prefix to progress bar so it's clearer what build each
+    progress bar belongs to. [GH-9780]
+* core: Ui now pretty prints build durations. [GH-9749]
+* core: When a build is cancelled, Packer will skip postprocessors gracefully
+    rather than failing them. [GH-9720]
+* integrations/secretsmanager: Add support for plaintext non-key/pair secrets.
+    [GH-9773]
+* post-processor/vsphere: Improve UI to catch bad credentials and print errors.
+    [GH-9649]
+* provisioner/ansible-remote: Add `ansible_ssh_extra_args` so users can specify
+    extra arguments to pass to ssh [GH-9821]
+* provisioner/file: Clean up, bugfix, and document previously-hidden `sources`
+    option. [GH-9725] [GH-9735]
+* provisioner/salt-masterless: Add option to option to download community
+    SaltStack formulas. [GH-9726]
+
+### BUG FIXES:
+* build: Fix bug in code generator that caused generation to fail in nested
+    packer/packer dirs [GH-9728]
+* build: Fix Makefile so that default target doesn't crash and creates dev
+    binaries. [GH-9706]
+* builder/amazon-ebssurrogate: Make skip_save_build_region option work in the
+    ebssurrogate builder, not just the ebs builder. [GH-9666]
+* builder/amazon: Add retry logic to the spot instance creation step to handle
+    "Invalid IAM Instance Profile name" errors [GH-9810]
+* builder/amazon: Update the `aws_secretsmanager` function to read from the AWS
+    credentials file for obtaining default region information; fixes the
+    'MissingRegion' error when AWS_REGION is not set [GH-9781]
+* builder/file: Make sure that UploadDir receives the interpolated destination.
+    [GH-9698]
+* builder/googlecompute: Fix bug where startup script hang would cause export
+    to hang. [GH-9708]
+* builder/hyperv: Send boot command in small chunks to make it more stable.
+    [GH-9765]
+* builder/scaleway: Fix config issue that made scaleway builder fail when used
+    with HCL2 config. [GH-9677]
+* builder/vmware: Fully destroy vm if it was cancelled or errored. This will
+    make orphaned vms easier to destroy through vCenter. [GH-9782]
+* builder/vsphere: Fix `alt`, `ctrl`, and `shift` keypresses in the
+    boot_command. [GH-9702] [GH-9739]
+* builder/vsphere: Fix bug where Packer timed out if two interfaces were
+    defined but only one had an available IP. [GH-9748]
+* builder/vsphere: Fix the configuration_parameters option so that it is always
+    applied, not just when the tool sync policy is set. [GH-9713]
+* communicator: Fix `pause_before_connect` option to force a reconnect after
+    the pause. [GH-9772]
+* core: Make `max_retries` provisioner option a string to allow variable
+    interpolation. [GH-9673]
+* post-processor/vsphere-template: Fix ReregisterVM to default to true instead
+    of false. [GH-9736]
+* post-processor/yandex-export: Fix issue when validating region_name [GH-9814]
+* provisioner/inspec: Fix the 'Unsupported argument; An argument named
+    "command"' error when using the inspec provisioner in an HCL2 configuration
+    [GH-9800]
+
+## 1.6.1 (July 30, 2020)
+
+### BACKWARDS INCOMPATABILITIES:
+
+* HCL: builder/vsphere: Add option to add a xhci/usb3 controller; changes
+    controller value to an array of strings.  [GH-9574]
+* HCL: New HCL-only `post-processors` block to run chained post-processors
+    after a build [GH-9638]. Before this, defining multiple `post-processor`
+    blocks after provisioning steps would run them sequentially, now doing this
+    makes them start from the build artifact. To queue post-processors you now
+    have to define them in a `post-processors` block. [GH-9638]
+* post-processor/vSphere: We have fixed a bug in the ovftool URL encoding. This
+    may mean that you have performed an encoding workaround that is no longer
+    necessary. [GH-9589]
+
+### FEATURES:
+* **New post-processor** Yandex Import [GH-9553]
+
+### IMPROVEMENTS:
+* builder/amazon-ebs: Wrap CreateImage call in a retry to account for eventual
+    consistency [GH-9579]
+* builder/azure: Disable SSH password authentication unless password is
+    explicitly specified. [GH-9603]
+* builder/docker: Add options for --cap-add, --cap-drop, --tmpfs, --device
+    [GH-9565]
+* builder/file: Create parent directories of target file, if they don't exist.
+    [GH-9452]
+* builder/googlecompute: Add `wrap_startup_script` configuration option to
+    allow the disabling of Packer's startup script wrapper [GH-9505]
+* builder/googlecompute: Add support for oslogin via the `use_os_login`
+    configuration option [GH-9339]
+* builder/googlecompute: Make IAP tunnel timeout configurable. [GH-9545]
+* builder/googlecompute: Support using WinRM over an IAP tunnel [GH-9610]
+* builder/hyper-v: Include secure boot template in box.xml [GH-9552]
+* builder/hyperone: Add support for custom username in vm creation. [GH-9497]
+* builder/hyperone: Skip chroot device discovery. [GH-9489]
+* builder/openstack: Bump gophercloud to latest version [GH-9573]
+* builder/proxmox: Add option to disable KVM hardware virtualization in Proxmox
+    builder [GH-9587]
+* builder/proxmox: Add support for multiple NIC packet queues [GH-9597]
+* builder/proxmox: Enable Proxmox builder to toggle the firewall parameter for
+    network interfaces. [GH-9487]
+* builder/proxmox: Update Proxmox storagePoolTypes [GH-9418]
+* builder/qemu: Add 'cdrom_interface' option to QEMU builder [GH-9483]
+* builder/tencentcloud: Add `source_image_name` to support getting source image
+    by name [GH-9619]
+* builder/tencentcloud: Update cvm root disk type to `CLOUD_PREMIUM` [GH-9663]
+* builder/ucloud: New access config options and run config options. [GH-9466]
+* builder/vsphere-clone: Add `boot_command` support to vsphere-clone builder,
+    including support for starting an HTTP server
+* builder/vsphere-clone: Add `vapp` configuration option [GH-9507]
+* builder/vsphere: Add ability to define multiple disk controllers [GH-9519]
+* builder/vsphere: Add `boot_command` support to vsphere-clone builder. [GH-9397]
+* builder/vsphere: Add `content_library_destination` to import VM template to a
+    Content Library [GH-9551]
+* builder/vsphere: Add `force_bios_setup` configuration option [GH-9563]
+* builder/vsphere: Add option to add a xhci/usb3 controller [GH-9574]
+* builder/vsphere: Create vm output folders if they don't exist [GH-9402]
+* builder/vsphere: Fix file size descriptor when exporting OFV [GH-9568]
+* builder/vsphere: Look at all available IPs in the waiting for IP loop.
+    [GH-9450]
+* builder/vsphere: Match network to host when multiple networks are found
+    [GH-9556]
+* builder/vsphere: Update vsphere `boot_command` to bring it in line with other
+    builders' boot_command functionality. [GH-9406]
+* builder/vsphere: Use datacenter inventory path for find folder [GH-9390]
+* builder/vsphere: Use value from "ip_wait_address" option to determine the
+    default for the http server IP [GH-9441]
+* builder/yandex: Allow set `min_disk_size` for an image.
+* builder/yandex: Support authentication by Service Account on instance
+    [GH-9383]
+* builder/yandex: yandex: Add new property `min_disk_size` of built image
+    [GH-9594]
+* communicator/ssh: Add support for OpenSSH certificate signing [GH-9521]
+* communicator/ssh: Allow users to provide a list of ciphers that they want
+    Packer to support. [GH-9453]
+* core/hcl2: Add possibility to name singular build.source blocks to
+    differentiate their output and to filter on them [GH-9490]
+* core/hcl2: Add the "inspect" command for hcl2 configs. [GH-9468]
+* core/hcl2: HCL configs now respect only/except using build names instead of
+    types. [GH-9454]
+* core/hcl: Allow use of `keep_input_artifact` in post processors. [GH-9477]
+* core/hcl: Share build info with Provisioner and Post-Processor via HCL2
+    variables [GH-9444] [GH-9534] [GH-9622]
+* core: Add on-error flag option to run error-cleanup-provisioner [GH-9429]
+* core: communicator/ssh: Add new `ssh_key_exchange_algorithms` option to
+    supply custom key exchange algorithms in SSH client [GH-9634]
+* core: refactor initialization out from Packer core to allow `validate
+    --syntax-only` to no error when a variable is not set [GH-9627]
+* hcl2: Handle uint64 buildvars [GH-9585]
+* post-processor/yandex-export: Allow users to utilize generated variables in
+    templating. [GH-9555]
+* post-processor/yandex-export: Support Authentication by Service Account Key
+    file [GH-9379]
+* post-processor/yandex-import: Support creating an Image based on another one
+    [GH-9614]
+* post-processor/yandex-import: Support using URL from yandex-export [GH-9601]
+* provisioner/ansible: Add template option for templating the inventory file
+    lines [GH-9438]
+
+### BUG FIXES:
+* builder/amazon: Change "Resource" field in
+    `temporary_iam_instance_profile_policy_document` to be an array of strings,
+    not just a single string. [GH-9509]
+* builder/amazon: HCL2: Add singular `run_volume_tag` block to ebs & ebssurrogate
+    builders. [GH-9457]
+* builder/amazon: Retry fetching block device mappings if empty. [GH-9480]
+* builder/azure: Fix data disks URI. [GH-9467]
+* builder/googlecompute: Fix issue with `use_iap` globally changing a user's
+    gcloud project configuration, by temporarily setting "project" via project
+    flag and not via `gcloud config` [GH-9662]
+* builder/googlecompute: Fix the "secure boot" validation for uefi_compatible
+    images. [GH-9371]
+* builder/qemu: Only set up localhost port forwarding if skipnatmapping is
+    false. [GH-9479]
+* builder/vagrant: Fix box file validation for remote box files specified using
+    `source_path` [GH-9660]
+* builder/vagrant: Improve validation and error handling around synced_folder.
+    Make sure that synced folder can be defined relative to Packer run
+    directory, not the Vagrant output directory. [GH-9577]
+* builder/virtualbox-vm: Fix regression where builder would fail if the vm had
+    no snapshots. [GH-9435]
+* builder/vmware-iso: Try checksum remote file instead of local file. [GH-9584]
+* builder/vmware: Fix a race that occurred when parsing the network config.
+    [GH-9387]
+* builder/vmware: Update vendor library, enabling retries on 502 errors
+    [GH-9391]
+* builder/vsphere-clone: Fix SSH public key injection for cloned templates
+    [GH-9507]
+* builder/vsphere: Clean up folder path to remove leading slashes. [GH-9542]
+* builder/vsphere: Deduplicate where Firmware is set in vsphere-iso builder
+    [GH-9557]
+* builder/vsphere: Fix vsphere ToolsSyncTime and ToolsUpgradePolicy [GH-9515]
+* builder/vsphere: vSphere driver context is no longer cancelled when Packer
+    context is cancelled. [GH-9576]
+* communicator/winrm: Add the "no_proxy" environment variable option to have
+    winrm bypass the proxy set by the http_proxy or https_proxy environment
+    vars, when connecting to the remote instance. [GH-9267]
+* core: Do not print download progress bar if a machine-readable UI is chosen.
+    [GH-9448]
+* post-processor/amazon-import: Add support for retrying RequestLimitExceeded
+    errors when importing an image [GH-9537]
+* post-processor/docker-import: Fix crash when using docker-import with HCL.
+    [GH-9670]
+* post-processor/vsphere: Fix password encoding in vsphere post-processor
+    ovftool call [GH-9589]
+* post-processor/yandex-export: Fix error handling and docs. [GH-9554]
+* provisioner/ansible-local: Fix agent auth in SSH communicator  [GH-9639]
+* provisioner/ansible: Correct check for whether PackerHttpAddr is implemented
+    or not [GH-9498]
+* provisioner/ansible: Quote extra-var packer_build_name to handle names with
+    spaces [GH-9590]
+
+## 1.6.0 (June 09, 2020)
+
+### BACKWARDS INCOMPATIBILITIES:
+* builder/vsphere-iso: The deprecated fields `network`, `network_card`,
+    `disk_size`, `disk_thin_provisioned`, and `disk_eagerly_scrub` have been
+    removed. Run `packer fix template.json` to migrate an existing template
+    [GH-9149]
+
+* For all iso-based builders, the `iso_checksum_type` and `iso_checksum_url`
+    fields have been removed in favor of simply setting the `iso_checksum`
+    field. Use the [packer fix](https://www.packer.io/docs/commands/fix/)
+    command to update a config file. See the [iso_checksum field
+    docs](https://www.packer.io/docs/builders/virtualbox/iso/#iso_checksum) to
+    read more about this. [GH-8437]
+
+### FEATURES:
+* **New post-processor** Yandex Export [GH-9124]
+* builder/amazon: Add SSM Session Manager as a SSH interface connection
+    [GH-9082]
+* builder/google: Implement iap proxy for googlecompute [GH-9105]
+* HCL2/core: Add command/console support for HCL2 config files [GH-9359]
+* HCL2/core: Add command/validate support for HCL2 config files [GH-9346]
+* HCL2/core: it is now possible to set source fields from the `build` block
+    [GH-9291]
+
+### IMPROVEMENTS:
+* builder/amazon: Added new `build` template function field:
+    SourceAMICreationDate [GH-9277]
+* builder/azure-arm: Support User Assigned Managed Identity [GH-9293]
+* builder/azure-chroot: Copy data disks between shared image galleries
+    [GH-9323]
+* builder/googlecompute: Changed default disk size. [GH-9071]
+* builder/googlecompute: New option to specify storage location for GCP images
+    [GH-9326]
+* builder/qemu: Add support for using a network bridge [GH-9159]
+* builder/qemu: Added `skip_nat_mapping` option to skip the communicator (SSH
+    or WinRM) automatic port forward and use the guest port directly. [GH-9307]
+* builder/qemu: Replace deprecated `ssh_host_port_min` and `ssh_host_port_max`
+    by `host_port_min` and `host_port_max`. [GH-9307]
+* builder/virtualbox: Add `output_filename` config option to allow user to set
+    a custom filename instead of forcing it to be the same as vm_name.
+    [GH-9174]
+* builder/vsphere: Add `floppy_label` option. [GH-9187]
+* builder/vsphere: Add `ip_wait_address` to allow packer to wait for an ip
+    address that fits within the range (cidr address).  [GH-9358]
+* builder/vsphere: Add `tools_sync_time` and `tools_upgrade_policy` options to
+    set time synchronization and automatic VMware Tools upgrade. [GH-9366]
+* core/hcl: Enable "force", "debug", and "on-error" command line flags for hcl2
+    builds. [GH-9234]
+* core/hcl: Enable only/except for provisioners and post-processors [GH-9357]
+* core/hcl: Support named builds in HCL2 templates [GH-9245]
+* core/interpolation: Add support for specifying a particular key to fetch from
+    the AWS Secrets Manager [GH-9202] [GH-9286]
+* core: HCL logs now display source type and source name (`type.name`) in logs
+    to differentiate more easily who says what. [GH-9257]
+* core: update consul and vault dependencies [GH-9205]
+* core: Update vendored "go-getter" library with checksum fixes.
+* core: Users can now configure the http bind address of the server launched to
+    serve files from http_directory [GH-9313]
+* core: When a template contains a deprecated option, Packer will now encourage
+    the user to call `packer fix`. [GH-9325]
+* post-processor/docker-push: Support pushing multiple tags [GH-9182]
+* post-processor/docker-tag: Change field name of docker tag to "tags" instead
+    of "tag" since it's a list. Keep "tag" for backwards compatibility.
+    [GH-9183]
+* provisioner/windows-restart: Display full hostname, instead of just the
+    NetBIOS name [GH-9335]
+
+### BUG FIXES:
+* buidler/vsphere-iso: Fix bug validating iso_urls [GH-9321]
+* builder/azure-arm: Update runtime constants with a valid DataDiskName
+    [GH-9251]
+* builder/digitalocean: Use correct image type for Droplet creates. [GH-9212]
+* builder/openstack: Don't error if metadata can't be set. Old versions of
+    openstack don't support that API call. [GH-9198]
+* builder/vagrant: Use absolute path for package_include files to prevent them
+    from having to be relative to the output vagrant directory. [GH-9260]
+* builder/virtualbox: Fix bug using checksum files. [GH-9101]
+* builder/vmware: Fix ssh connection when the guest platform's dhcpcd switches
+    the IP address in-between a build. [GH-9322]
+* builder/vsphere-iso: Use the Datacenter's VmFolder call instead of manually
+    generating folder path [GH-9342]
+* builder/vsphere: Add option not to set host during datastore upload. [GH-9100
+* builder/vsphere: Fix crash in the driver for an interface conversion of
+    types.AnyType nil to types.ManagedObjectReference. [GH-9354]
+* builder/vsphere: Fix iso config prepare being called incorrectly, which
+    caused `iso_url` field to fail. [GH-9197]
+* builder/yandex: Do not require 'gpu-standard-v1' platform_id for any GPU-
+    based config. [GH-9356]
+* core: Ensure HTTP server information `PackerHTTPIP`, `PackerHTTPPort`, and
+    `PackerHTTPAddr` are available via the `build` template engine for all
+    supported builders [GH-9238]
+* core: Fix `iso_url` to accept SMB shared files UNC and windows network paths.
+    [GH-8954]
+* core: Fix regression that broke use of pwd when retrieving the checksum from
+    a file [GH-9129].
+* post-processor/vagrant: Add "provider_override" template option to allow
+    artifacts from the Artifice post-processor [GH-9239]
+* post-processor/vsphere-template: Add VSphere builder's artifact to vsphere-
+    template's supported types [GH-9146]
+* postprocessor/artifice: Update various core post-processors to accept
+    artifacts from the Artifice post-processor [GH-9239]
+* provisioner/ansible-remote: Fix the arg order to make sure that the playbook
+    file is the last item in the call [GH-9279]
+* provisioner/ansible: Ansible provisioner doesn't force ssh key checking if
+    user wants to use password to connect instead. [GH-9350]
+* provisioner/inspec: Fix build variables interpolation [GH-9262]
+* provisioner/powershell: fix interpolation of execute_command in cleanup
+    script call. [GH-9275]
+* provisioner/powershell: Fix long-wait retry loop caused by cleanup logic
+    [GH-9226]
+* provisioner/salt-masterless: Ignore the CmdArgs field in hcl2 [GH-9290]
+
+## 1.5.6 (May 1, 2020)
+
+### BACKWARDS INCOMPATIBILITIES:
+* core/hcl2: HCL2 singular blocks: use key/value or name/value depending on how
+    the service names things [GH-9078]
+* core/hcl2: Maps are now treated as settable arguments as opposed to blocks.
+    For example `tags = {}` instead of `tags {}` [GH-9035]
+* `packer build` command: removed option to set `parallel=false`, use
+    `-parallel-builds=1` for this.
+
+### FEATURES:
+* **New Builder** azure-dtl allows creation of devtestlabs images in Azure
+    [GH-8987]
+
+* **New Core Feature** provisioners now support a `max_retries` option that can
+    be used for retrying a provisioner on error [GH-9061]
+
+* **New Post-Processor**: `yandex-export` Upload built image in Yandex Object Storage.
+
+### IMPROVEMENTS:
+* builder/azure-arm: Add `boot_diag_storage_account` option for enabling boot
+    diagnostics on a virtual machine [GH-9053]
+* builder/azure-arm: Add support for setting custom resource names [GH-9028]
+* builder/azure-arm: Data disk names are now randomly generated [GH-8986]
+* builder/azure: Add shared image destination for azure-chroot [GH-9021]
+* builder/azure: Add shared image source for chroot builder [GH-9070]
+* builder/google: Add support for custom shielded images [GH-8970]
+* builder/google: Allow `source_image_project_id` to be a list of several
+    projects to search. [GH-8679]
+* builder/hyperv: Add `boot_order` option to override the default boot order
+    [GH-9046]
+* builder/oracle-oci: Allow Instance Principal Auth for Oracle OCI builder
+    [GH-8893]
+* builder/oracle-oci: Update Oracle SDK. [GH-9104]
+* builder/proxmox: Add ability to add a cloud-init drive [GH-9045]
+* builder/vsphere: Add `disable_shutdown` option to support manual vm shutdown
+    over the default automatic shutdown step [GH-9095]
+* builder/vsphere: Add `vgpu_profile` option for specifying vGPU profiles
+    [GH-8946]
+* builder/vsphere: Add support for EFI Secure Boot [GH-9018]
+* builder/vsphere: Add support for specifying vGPU profiles [GH-8946]
+* builder/yandex: Add `target_image_folder_id ` option for changing the folder
+    where a built image will be saved to [GH-9080]
+* core/hcl2: HCL mode builds now honor -only and -except options [GH-8947]
+* core/hcl2: Set `packer_build_name` and `packer_builder_type` variables for
+    builder provisioners and post-processors [GH-8956]
+* core/HCL: HCL mode now honors -only and -except options. [GH-8947]
+* core: New template function: aws_secretsmanager [GH-9099]
+* provisioner/ansible: Add `use_proxy` option to not use localhost proxy adapter. Removes
+    need for ansible connection_plugin when using WinRM. [GH-8625]
+* provisioner/powershell: Add `debug_mode` option to help with debugging
+    generated scripts [GH-8996]
+* provisioner/powershell: Add cleanup step to remove temporarily created
+    scripts; cleanup can be skipped by setting the `skip_clean` option
+    [GH-8908]
+
+### BUG FIXES:
+* builder/amazon: Fix bug with `launch_block_device_mappings` in spot
+    instances. [GH-8945]
+* builder/azure-arm: Fix issue where managed image builds were using a
+    different `location` then what was specified in the build configuration
+    [GH-9068]
+* builder/azure: Allow Managed Data Disks to be used with Azure Shared Image
+    Gallery  [GH-8912]
+* builder/azure: Fix SSH connection for temporary admin users specified in
+    `ssh_username` [GH-9103]
+* builder/osc: Make compliant with oAPI spec for Outscale osc-bsu builder
+    [GH-9093]
+* builder/qemu: Remove `net_device` pre-validation [GH-8979]
+* builder/tencentcloud: Update builder to handle the
+    InstanceOperationInProgress error [GH-9069]
+* builder/vsphere-iso: disk_size is no longer required if storage is defined
+    [GH-8975]
+* builder/vsphere: Add exported files to VSphere artifact [GH-9020]
+* builder/vsphere: Fix issue where -force is not working with vsphere builders
+    [GH-9039]
+* core: Fix crash in wrapperreadline helper when calling `os.NewFile` on
+    unknown file descriptor [GH-9037]
+* core: Make sure CLI variables supersede variables from var files [GH-8964]
+* provisioner/powershell: Fix integer decoding issue in the execution policy
+    parser [GH-8997]
+
+## 1.5.5 (March 25,2020)
+
+### BACKWARDS INCOMPATIBILITIES:
+* core: Interpolation of undefined variables will now error as expected, in
+    previous versions variables were allowed to be set as a command line
+    argument but that was because the validation was being ignored
+
+### IMPROVEMENTS:
+* builder/azure: Add support for configurable KeyVault SKU [GH-8879]
+* builder/hyperv: Add `first_boot_device` setting to allow the selection of the
+    initial device or device class used for booting the VM. [GH-8714]
+* builder/hyperv: Fix Hyper-V compacted disk size comparison [GH-8811]
+* builder/openstack: Add new `image_auto_accept_members` option [GH-8931]
+* builder/proxmox: Add ability to specify vga adapter [GH-8892]
+* builder/proxmox: Add onboot directive support [GH-8935]
+* builder/tencentcloud: Show tencentcloud image id after copy to destination
+    region. [GH-8763]
+* builder/vmware-iso: Add `cleanup_remote_cache` config option to [GH-8917]
+* builder/vmware-iso: Do not perform dial test of NIC when ssh bastion is
+    required [GH-8877]
+* builder/vsphere-clone: Add ability to export VM to OVF file [GH-8764]
+* builder/vsphere-iso: Add ability to define multiple disks. [GH-8787]
+* builder/vsphere-iso: Add ability to export VM to OVF file [GH-8764]
+* builder/vsphere-iso: Add support for eagerly zeroed / scrubbed disks.
+    [GH-8756]
+* builder/vsphere-iso: Add the remote iso first so that it is first in boot
+    order, and clarify boot behavior. [GH-8732]
+* communicator/ssh: Add flag to enable support for keyboard-interactive auth to
+    connect bastion [GH-8847]
+* core/hcl2: Add support for singular blocks [GH-8889]
+* core/hcl2: Add support in HCL2 configs for dynamic blocks, document for loops
+    and splat expressions [GH-8720]
+* core/hcl2: Fix HCL2 local variables decoding to allow local usage within
+    another local in the same locals block [GH-8755]
+* core/hcl2: Import new replace and regex_replace funcs from go-cty +
+    documentation [GH-8863]
+* core: Enable hcl files as var files in HCL mode [GH-8882]
+* core: Make "build" engine template variables SSHPublicKey and SSHPrivateKey
+    strings [GH-8829]
+
+### Bug Fixes:
+* builder/azure: Fix `winrm_password` attribution and allow users to set
+    `winrm_username` [GH-8928]
+* builder/azure: Fix azure key vault cleanup failure [GH-8905]
+* builder/azure: Fix HCL2 bug that prevented Azure and other builders from
+    loading properly. [GH-8785]
+* builder/googlecompute: Fix WinRMPassword template engine. [GH-8890]
+* builder/googlecompute: Replace deprecated "sshKeys" metadata with "ssh-keys"
+    to fix SSH authentication issue [GH-8942]
+* builder/proxmox: Add new validation to catch that template_name cannot
+    contain spaces. [GH-8799]
+* builder/proxmox: Bump proxmox-api-go to fix upstream bug where users hit open
+    file limit. [GH-8800]
+* builder/vagrant: Fix path validation in ssh config step. [GH-8826]
+* builder/virtualbox-vm: Fix crash when VM has no snapshots. [GH-8906]
+* builder/virtualbox: Remove all floppy controllers before adding a new one.
+    [GH-8828]
+* builder/vsphere-clone: Fix issue preventing the cloning of VMs with the same
+    name in different folders [GH-8938]
+* builder/vsphere-iso: Fix issue preventing the creation of VMs with the same
+    name in different folders [GH-8938]
+* builder/vsphere: Fix network object interface panic. [GH-8753]
+* core/hcl2: Fix crash when an unset variable is used [GH-8837]
+* core/hcl2: Fix logic for parsing literal value variables [GH-8834]
+* core/hcl2: Make sure locals are evaluated only after variables are. [GH-8918]
+* core: Fix "build" template engine interpolation for certain fields in certain
+    provisioners. [GH-8771]
+* core: Fix bug where user var recursion could fail intermittently when used
+    with env vars [GH-8875]
+* core: Interpolation of undefined variables will now error as expected
+* plugins: Make plugin discovery stricter with respect to periods so that users
+    can disable plugins by renaming the extension [GH-8735]
+* provisioner/salt: Fix `no_exit_on_failure` config to work correctly as
+    expected. [GH-9119]
+* provisioner/shell: "inline" config option is now a template engine. [GH-8883]
+
+## 1.5.4 (February 14, 2020)
+no-change release to fix code-signing on OSX binaries. Since checksums for these
+binaries has changed, we are releasing a second time to prevent confusion.
+
+## 1.5.3 (February 14, 2020)
+
+### IMPROVEMENTS:
+* builder/vsphere: Add ability to define multiple NICs for vsphere-iso
+    [GH-8739]
+* builder/vsphere: Add option to remove CD-ROM drives. [GH-8690]
+* core: Add validation to catch when users accidentally add duplicate fields to
+    template [GH-8725]
+
+### Bug Fixes:
+* core/hcl2: Fix template prepare/validation for HCL2 templates [GH-8742]
+* core: Fix `build` template function interpolation [GH-8727]
+
+## 1.5.2 (February 12, 2020)
+**New Builder** The vsphere-iso builder, previously maintained by JetBrains,
+has been merged with the Packer core. It will be officially supported by the
+Packer team at HashiCorp moving forward. [GH-8480]
+
+**HCL2 variables & functions** HCL2 configurations can now use `variable`,
+`variables`, `locals`, and functions [GH-8588].
+
+### IMPROVEMENTS:
+* builder/alicloud: Add AlicloudProfile option. [GH-8560]
+* builder/amazon: Add max_retries option to aws builders [GH-8709]
+* builder/amazon: Add source AMI owner ID/name to template engines [GH-8550]
+* builder/amazon: Update instance waiters to use global waiter settings set by
+    `AWS_POLL_DELAY_SECONDS` and `AWS_TIMEOUT_SECONDS` [GH-8699]
+* builder/azure: Allow users to use custom key vault for storing Windows
+    certificates [GH-8704]
+* builder/azure: Set expiry for image versions in SIG [GH-8561]
+* builder/proxmox: Add option to upload the boot ISO rather than pointing out a
+    previously manually uploaded one. [GH-8624]
+* builder/vagrant: Fix a crash in the Vagrant driver [GH-8607]
+* builder/yandex: Add service account ID to config [GH-8717]
+* communicator/winrm: Users can now override winrm_host with a static IP even
+    when using cloud builders. [GH-8675]
+* core/hcl2: Fix bug preventing reading slices within other slices [GH-8669]
+* core:  Interpolation within post-processors can now access build-specific
+    values like Host IP, communicator password, and more [GH-8632]
+* core: Add `PACKER_PLUGIN_PATH` to list of supported paths for plugin
+    discovery [GH-8616]
+* core: clean up messy log line in plugin execution. [GH-8542]
+* core: Ensure `PACKER_HTTP_ADDR` is always set for any builder that provides a
+    HTTP server for file transfer [GH-8654]
+* core: Fix loading external plugins defined in PACKER_CONFIG [GH-8582]
+* core: Log name of postprocessor running to disambiguate long chains of post-
+    processors. [GH-8613]
+* core: Packer can use isos in-place on Windows again, instead of copying them
+    into its cache. [GH-7627]
+* core: step_download: return without error if Urls is empty [GH-8579]
+* post-processor/vsphere-template] Simplify method to use vm.MarkAsTemplate
+    (optionally) [GH-8511]
+* scripts: Fix some issues with mapstructure-to-hcl2 code generator. [GH-8574]
+* scripts: Update Vagrant bootstrapping scripts [GH-8604]
+
+### Bug Fixes:
+* builder/alicloud: Fix "security group doesn't exist" error when there are >10
+    security groups. [GH-8535]
+* builder/amazon: Allow AWS builder pre-validation to pass when subnet filters
+    are present [GH-8622]
+* builder/azure: Fix bug where deployments were not being cleaned up: [GH-8496]
+* builder/azure: Fix issue where WinRMPassword was being left unset [GH-8670]
+* builder/lxd: Fix file uploading issue when using the file provisioner
+    [GH-8636]
+* builder/null: Fix crash when configuring builder using HCL2. [GH-8612]
+* builder/osc: Fix ssh host detection in Public Cloud and Nets [GH-8414]
+* builder/vagrant: Fix bug with reading key from a path with spaces [GH-8605]
+* builder/virtualbox-ovf: Remove config dependency from StepImport [GH-8509]
+* builder/virtualbox-vm: use config as a non pointer to avoid a panic [GH-8576]
+* core: Fix crash when build.sources is set to an invalid name [GH-8569]
+* core: Fix error loading .packerconfig [GH-8623]
+* core: Fix loading local ISO files when using `iso_target_path` [GH-8689]
+* core: Fix loading of external plugins. GH-8543]
+* post-processor/docker-tag: Fix regression if no tags were specified.
+    [GH-8593]
+* post-processor/vagrant-cloud: Update error handling for Vagrant Cloud API
+    [GH-8594]
+* post-processor/vagrant: correctly handle the diskSize property as a qemu size
+    string [GH-8567]
+* provisioner/ansible: Fix password sanitization to account for empty string
+    values. [GH-8570]
+* provisioner/shell: Fix bug with shell provisioner failing to clean up the
+    environment var file when env_var_file is true. [GH-8639]
+
+## 1.5.1 (December 20, 2019)
+This was a fast-follow release to fix a number of panics that we introduced when
+making changes for HCL2.
+
+### IMPROVEMENTS:
+* builder/alicloud: Add show_expired option for describing images [GH-8425]
+
+### Bug Fixes:
+* builder/cloudstack: Fix panics associated with loading config [GH-8513]
+* builder/hyperv/iso: Fix panics associated with loading config [GH-8513]
+* builder/hyperv/vmcx: Fix panics associated with loading config [GH-8513]
+* builder/jdcloud: Update jdcloud statebag to use pointers for config [GH-8518]
+* builder/linode: Fix panics associated with loading config [GH-8513]
+* builder/lxc: Fix panics associated with loading config [GH-8513]
+* builder/lxd: Fix panics associated with loading config [GH-8513]
+* builder/oneandone: Fix panics associated with loading config [GH-8513]
+* builder/oracle/classic: Fix panics associated with loading config [GH-8513]
+* builder/oracle/oci: Fix panics associated with loading config [GH-8513]
+* builder/osc/bsuvolume: Fix panics associated with loading config [GH-8513]
+* builder/parallels/pvm: Fix panics associated with loading config [GH-8513]
+* builder/profitbricks: Fix panics associated with loading config [GH-8513]
+* builder/scaleway: Fix panics associated with loading config [GH-8513]
+* builder/vagrant: Fix panics associated with loading config [GH-8513]
+* builder/virtualbox/ovf: Fix panics associated with loading config [GH-8513]
+* builder/virtualbox: Configure NAT interface before forwarded port mapping
+    #8514
+* post-processor/vagrant-cloud: Configure NAT interface before forwarded port
+    mapping [GH-8514]
+
+## 1.5.0 (December 18, 2019)
+
+### IMPROVEMENTS:
+* builder/amazon: Add no_ephemeral template option to remove ephemeral drives
+    from launch mappings. [GH-8393]
+* builder/amazon: Add validation for "subnet_id" when specifying "vpc_id"
+    [GH-8360] [GH-8387] [GH-8391]
+* builder/amazon: allow enabling ena/sr-iov on ebssurrogate spot instances
+    [GH-8397]
+* builder/amazon: Retry runinstances aws api call to mitigate throttling
+    [GH-8342]
+* builder/hyperone: Update builder schema and tags [GH-8444]
+* builder/qemu: Add display template option for qemu. [GH-7676]
+* builder/qemu: Disk Size is now read as a string to support units. [GH-8320]
+    [GH-7546]
+* builder/qemu: Add fixer to convert disk size from int to string [GH-8390]
+* builder/qemu: Disk Size is now read as a string to support units. [GH-8320]
+    [GH-7546]
+* builder/qemu: When a user adds a new drive in qemuargs, process it to make
+    sure that necessary settings are applied to that drive. [GH-8380]
+* builder/vmware: Fix error message when ovftool is missing [GH-8371]
+* core: Cleanup logging for external plugins [GH-8471]
+* core: HCL2 template support is now in beta. [GH-8423]
+* core: Interpolation within provisioners can now access build-specific values
+    like Host IP, communicator password, and more. [GH-7866]
+* core: Various fixes to error handling. [GH-8343] [GH-8333] [GH-8316]
+    [GH-8354] [GH-8361] [GH-8363] [GH-8370]
+* post-processor/docker-tag: Add support for multiple tags. [GH-8392]
+* post-processor/shell-local: Add "valid_exit_codes" option to shell-local.
+    [GH-8401]
+* provisioner/chef-client: Add version selection option. [GH-8468]
+* provisioner/shell-local: Add "valid_exit_codes" option to shell-local.
+    [GH-8401]
+* provisioner/shell: Add support for the "env_var_format" parameter [GH-8319]
+
+### BUG FIXES:
+* builder/amazon: Fix request retry mechanism to launch aws instance [GH-8430]
+* builder/azure: Fix PollDuration option which was overridden in some clients.
+    [GH-8490]
+* builder/hyperv: Fix bug in checking VM name that could cause flakiness if
+    many VMs are defined. [GH-8357]
+* builder/vagrant: Use absolute path for Vagrantfile [GH-8321]
+* builder/virtualbox: Fix panic in snapshot builder. [GH-8336] [GH-8329]
+* communicator/winrm: Resolve ntlm nil pointer bug by bumping go-ntlmssp
+    dependency [GH-8369]
+* communicator: Fix proxy connection settings to use "SSHProxyUsername" and
+    "SSHProxyPassword" where relevant instead of bastion username and password.
+    [GH-8375]
+* core: Fix bug where Packer froze if asked to log an extremely long line
+    [GH-8356]
+* core: Fix iso_target_path option; don't cache when target path is non-nil
+    [GH-8394]
+* core: Return exit code 1 when builder type is not found [GH-8474]
+* core: Return exit code 1 when builder type is not found [GH-8475]
+* core: Update to newest version of go-tty to re-enable CTRL-S and CTRL-Q usage
+    [GH-8364]
+
+### BACKWARDS INCOMPATIBILITIES:
+* builder/amazon: Complete deprecation of clean_ami_name template func
+    [GH-8320] [GH-8193]
+* core: Changes have been made to both the Prepare() method signature on the
+    builder interface and on the Provision() method signature on the
+    provisioner interface. [GH-7866]
+* provisioner/ansible-local: The "galaxycommand" option has been renamed to
+    "galaxy_command". A fixer has been written for this, which can be invoked
+    with `packer fix`. [GH-8411]
+
+## 1.4.5 (November 4, 2019)
+
+### IMPROVEMENTS:
+* added ucloud-import post-processsor to import custom image for UCloud UHost
+    instance [GH-8261]
+* builder/amazon: New option to specify IAM policy for a temporary instance
+    profile [GH-8247]
+* builder/amazon: improved validation around encrypt_boot and kms_key_id for a
+    better experience [GH-8288]
+* builder/azure-arm: Allow specification of polling duration [GH-8226]
+* builder/azure-chroot: Add Azure chroot builder [GH-8185] & refactored some
+    common code together after it [GH-8269]
+* builder/azure: Deploy NSG if list of IP addresses is provided in config
+    [GH-8203]
+* builder/azure: Set correct user agent for Azure client set [GH-8259]
+* builder/cloudstack: Add instance_display_name for cloudstack builder
+    [GH-8280]
+* builder/hyperv: Add the additional_disk_size option tho the hyperv vmcx
+    builder. [GH-8246]
+* builder/openstack: Add option to discover provisioning network [GH-8279]
+* builder/oracle-oci: Support defined tags for oci builder [GH-8172]
+* builder/proxmox: Add ability to select CPU type [GH-8201]
+* builder/proxmox: Add support for SCSI controller selection [GH-8199]
+* builder/proxmoz: Bump Proxmox dependency: [GH-8241]
+* builder/tencent: Add retry on remote api call [GH-8250]
+* builder/vagrant: Pass through logs from vagrant in real time rather than
+    buffering until command is complete [GH-8274]
+* builder/vagrant: add insert_key option for toggling whether to add Vagrant's
+    insecure key [GH-8274]
+* builder/virtualbox: enabled pcie disks usage, but this feature is in beta and
+  won't work out of the box yet [GH-8305]
+* communicator/winrm: Prevent busy loop while waiting for WinRM connection
+    [GH-8213]
+* core: Add strftime function in templates [GH-8208]
+* core: Improve error message when comment is bad [GH-8267]
+* post-processor/amazon-import: delete intermediary snapshots [GH-8307]
+* Fix various dropped errors an removed unused code: [GH-8230] [GH-8265]
+    [GH-8276] [GH-8281] [GH-8309] [GH-8311] [GH-8304] [GH-8303] [GH-8293]
+
+### BUG FIXES:
+* builder/amazon: Fix region copy for non-ebs amazon builders [GH-8212]
+* builder/amazon: Fix spot instance bug where builder would fail if one
+    availability zone could not support the requested spot instance type, even
+    if another AZ could do so. [GH-8184]
+* builder/azure: Fix build failure after a retry config generation error.
+    [GH-8209]
+* builder/docker: Use a unique temp dir for each build to prevent concurrent
+    builds from stomping on each other [GH-8192]
+* builder/hyperv: Improve filter for determining which files to compact
+    [GH-8248]
+* builder/hyperv: Use first adapter, rather than failing, when multiple
+    adapters are attached to host OS's VM switch [GH-8234]
+* builder/openstack: Fix setting openstack metadata for use_blockstorage_volume
+    [GH-8186]
+* builder/openstack: Warn instead of failing on terminate if instance is
+    already shut down [GH-8176]
+* post-processor/digitalocean-import: Fix panic when 'image_regions' not set
+    [GH-8179]
+* provisioner/powershell: Fix powershell syntax error causing failed builds
+    [GH-8195]
+
+## 1.4.4 (October 1, 2019)
+
+### IMPROVEMENTS:
+**New Core Feature** Error cleanup provisioner [GH-8155]
 * builder/amazon: Add ability to set `run_volume_tags` [GH-8051]
 * builder/amazon: Add AWS API call reties on AMI prevalidation [GH-8034]
 * builder/azure: Refactor client config [GH-8121]
@@ -14,6 +1373,8 @@
 * builder/openstack: Store WinRM password for provisioners to use [GH-7940]
 * builder/proxmox: Shorten default boot_key_interval to 5ms from 100ms
     [GH-8088]
+* builder/proxmox: Allow running the template VM in a Proxmox resource pool
+    [GH-7862]
 * builder/ucloud: Make ucloud builder's base url configurable [GH-8095]
 * builder/virtualbox-vm: Make target snapshot optional [GH-8011] [GH-8004]
 * builder/vmware: Allow user to attach floppy files to remote vmx builds
@@ -28,13 +1389,16 @@
 * post-processor/vagrant-cloud: Allow use of the Artifice post-processor with
     the Vagrant Cloud post-processor [GH-8018] [GH-8027]
 * post-processor/vsphere: Removed redundant whitelist check for builders,
-    allowing users to use post-processor withough the VMWare builder [GH-8064]
-
+    allowing users to use post-processor without the VMWare builder [GH-8064]
 
 ### BUG FIXES:
 * builder/amazon: Fix FleetID crash. [GH-8013]
 * builder/amazon: Gracefully handle rate limiting when retrieving winrm
     password. [GH-8087]
+* builder/amazon: Fix race condition in spot instance launching [GH-8165]
+* builder/amazon: Amazon builders now respect ssh_host option [GH-8162]
+* builder/amazon: Update the AWS sdk to resolve some credential handling issues
+    [GH-8131]
 * builder/azure: Avoid a panic in getObjectIdFromToken [GH-8047]
 * builder/googlecompute: Fix crash caused by nil account file. [GH-8102]
 * builder/hyper-v: Fix when management interface is not part of virtual switch
@@ -57,18 +1421,23 @@
     download. [GH-7996]
 * builder/virtualbox: LoadSnapshots succeeds even if machine has no snapshots
     [GH-8096]
-* core: Fix bug where sensitive variables contianing commas were not being
+* builder/vmware: fix dropped test errors [GH-8170]
+* core: Fix bug where sensitive variables containing commas were not being
     properly sanitized in UI calls. [GH-7997]
 * core: Fix handling of booleans where "unset" is a value distinct from
     "false". [GH-8021]
 * core: Fix tests that swallowed errors in goroutines [GH-8094]
 * core: Fix bug where Packer could no longer run as background process [GH-8101]
+* core: Fix zsh auto-completion [GH-8160]
+* communicator/ssh: Friendlier message warning user that their creds may be
+    wrong [GH-8167]
 * post-processor/amazon-import: Fix non-default encryption. [GH-8113]
+* post-processor/vagrant-cloud: Fix dropped errors [GH-8156]
 * provisioner/ansible: Fix provisioner dropped errors [GH-8045]
 
 ### BACKWARDS INCOMPATIBILITIES:
 * core: "sed" template function has been deprecated in favor of "replace" and
-    "replace_all" functins [GH-8119]
+    "replace_all" functions [GH-8119]
 
 ## 1.4.3 (August 14, 2019)
 
@@ -204,14 +1573,14 @@
     build region. [GH-7691]
 * builder/amazon: Fix failure that happened when spot_tags was set but ami_tags
     wasn't [GH-7712]
-* builder/cloudstack: Update go-cloudstack sdk, fixing compatability with
+* builder/cloudstack: Update go-cloudstack sdk, fixing compatibility with
     CloudStack v 4.12 [GH-7694]
 * builder/proxmox: Update proxmox-api-go dependency, fixing issue calculating
     VMIDs. [GH-7755]
 * builder/tencent: Correctly remove tencentcloud temporary keypair. [GH-7787]
 * core: Allow timestamped AND colorless ui messages [GH-7769]
 * core: Apply logSecretFilter to output from ui.Say [GH-7739]
-* core: Fix "make bin" command to use reasonbale defaults. [GH-7752]
+* core: Fix "make bin" command to use reasonable defaults. [GH-7752]
 * core: Fix user var interpolation for variables set via -var-file and from
     command line [GH-7733]
 * core: machine-readable UI now writes UI calls to logs. [GH-7745]
@@ -448,7 +1817,7 @@
 * core: make packer inspect not print sensitive variables [GH-7084]
 * post-processor/google: Add new `guest-os-features` option. [GH-7218]
 * postprocessor/docker-import: Added `change` support [GH-7127]
-* provisioner/ansible-remote: add `-o IdentitiesOnly=yes`as a default flag
+* provisioner/ansible-remote: add `-o IdentitiesOnly=yes` as a default flag
     [GH-7115]
 * provisioner/chef-client: Elevated support for chef-client provisioner
     [GH-7078]
@@ -626,7 +1995,7 @@
 * builder/amazon: fix bugs relating to spot instances provisioning [GH-6697]
     [GH-6693]
 * builder/openstack: fix ssh keypair not attached [GH-6701]
-* core: progressbar: fix deadlock locking builds afer first display [GH-6698]
+* core: progressbar: fix deadlock locking builds after first display [GH-6698]
 
 ## 1.3.0 (September 11, 2018)
 
@@ -699,7 +2068,7 @@
     waiters. [GH-6649]
 * builder/azure: Generated password satisfies Azure password requirements
     [GH-6480]
-* builder/hyper-v: Buider no longer errors if skip_compaction isn't true when
+* builder/hyper-v: Builder no longer errors if skip_compaction isn't true when
     skip_export is true, and compaction efficiency is improved [GH-6393]
 * builder/lxc: Correctly pass "config" option to "lxc launch". [GH-6563]
 * builder/lxc: Determine lxc root according to the running user [GH-6543]
@@ -720,7 +2089,7 @@
     `execute_command`s [GH-6636]
 * provisioner/shell-local: Windows inline scripts now default to being appended
     with ".cmd", fixing a backwards incompatibility in v1.2.5 [GH-6626]
-* provisioner/windows-restart: Provisioner now works when used in conjuction
+* provisioner/windows-restart: Provisioner now works when used in conjunction
     with SSH communicator [GH-6606]
 
 ### BACKWARDS INCOMPATIBILITIES:
@@ -862,7 +2231,7 @@
 * builder/virtualbox: Fix broken scancodes in boot_command. [GH-6067]
 * builder/vmware-iso: Fail in validation if user gives wrong remote_type value.
     [GH-4563]
-* builder/vmware: Fixed a case-sensitivity issue when determing the network
+* builder/vmware: Fixed a case-sensitivity issue when determining the network
     type during the cloning step in the vmware-vmx builder. [GH-6057]
 * builder/vmware: Fixes the DHCP lease and configuration pathfinders for VMware
     Player. [GH-6096]
@@ -2983,7 +4352,7 @@
 ### BUG FIXES:
 
 * core: default user variable values don't need to be strings. [GH-456]
-* builder/amazon-chroot: Fix errors with waitin for state change. [GH-459]
+* builder/amazon-chroot: Fix errors with waiting for state change. [GH-459]
 * builder/digitalocean: Use proper error message JSON key (DO API change).
 * communicator/ssh: SCP uploads now work properly when directories
     contain symlinks. [GH-449]

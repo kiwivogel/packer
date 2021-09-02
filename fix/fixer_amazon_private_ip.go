@@ -12,6 +12,12 @@ import (
 // true` with `"ssh_interface": "private_ip"`
 type FixerAmazonPrivateIP struct{}
 
+func (FixerAmazonPrivateIP) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"*amazon*": []string{"ssh_private_ip"},
+	}
+}
+
 func (FixerAmazonPrivateIP) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	type template struct {
 		Builders []map[string]interface{}

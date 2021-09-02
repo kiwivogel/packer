@@ -7,6 +7,10 @@ import (
 // FixerVirtualBoxRename changes "virtualbox" builders to "virtualbox-iso"
 type FixerVirtualBoxRename struct{}
 
+func (FixerVirtualBoxRename) DeprecatedOptions() map[string][]string {
+	return map[string][]string{}
+}
+
 func (FixerVirtualBoxRename) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	type template struct {
 		Builders     []map[string]interface{}

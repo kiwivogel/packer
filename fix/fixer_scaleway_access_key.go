@@ -8,6 +8,12 @@ import (
 // to "organization_id".
 type FixerScalewayAccessKey struct{}
 
+func (FixerScalewayAccessKey) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"hashicorp.scaleway": []string{"access_key"},
+	}
+}
+
 func (FixerScalewayAccessKey) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	// The type we'll decode into; we only care about builders
 	type template struct {

@@ -4,6 +4,7 @@
 # Determine the arch/os combos we're building for
 ALL_XC_ARCH="386 amd64 arm arm64 ppc64le mips mips64 mipsle mipsle64 s390x"
 ALL_XC_OS="linux darwin windows freebsd openbsd solaris"
+SKIPPED_OSARCH="!darwin/arm !freebsd/arm !freebsd/arm64"
 
 # Exit immediately if a command fails
 set -e
@@ -12,8 +13,7 @@ set -e
 function validateToolPresence
 {
     local TOOLNAME=$1
-    which ${TOOLNAME} >/dev/null
-    if [ $? -ne 0 ]; then
+    if ! which ${TOOLNAME} >/dev/null; then
         echo "${TOOLNAME} is not on the path. Exiting..."
         exit 1
     fi
@@ -125,15 +125,15 @@ if [ -n "${PACKER_DEV+x}" ]; then
     XC_ARCH=$(go env GOARCH)
 fi
 
-set +e
+export CGO_ENABLED=0
+
 ${GOX:?command not found} \
     -os="${XC_OS:-$ALL_XC_OS}" \
     -arch="${XC_ARCH:-$ALL_XC_ARCH}" \
-    -osarch="!darwin/arm !darwin/arm64" \
+    -osarch="${SKIPPED_OSARCH}" \
     -ldflags "${GOLDFLAGS}" \
     -output "pkg/{{.OS}}_{{.Arch}}/packer" \
     .
-set -e
 
 # trim GOPATH to first element
 IFS="${PATHSEP}"

@@ -1,11 +1,18 @@
 package fix
 
 import (
-	"github.com/mitchellh/mapstructure"
 	"strings"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 type FixerAmazonTemporarySecurityCIDRs struct{}
+
+func (FixerAmazonTemporarySecurityCIDRs) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"*amazon*": []string{"temporary_security_group_source_cidr"},
+	}
+}
 
 func (FixerAmazonTemporarySecurityCIDRs) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	// Our template type we'll use for this fixer only

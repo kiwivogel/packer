@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer/builder/file"
 	"github.com/hashicorp/packer/packer"
 	shell_local "github.com/hashicorp/packer/provisioner/shell-local"
@@ -15,23 +16,14 @@ import (
 // available. This allows us to test a builder that writes files to disk.
 func testCoreConfigSleepBuilder(t *testing.T) *packer.CoreConfig {
 	components := packer.ComponentFinder{
-		Builder: func(n string) (packer.Builder, error) {
-			switch n {
-			case "file":
-				return &file.Builder{}, nil
-			default:
-				panic(n)
-			}
-		},
-		Provisioner: func(n string) (packer.Provisioner, error) {
-			switch n {
-			case "shell-local":
-				return &shell_local.Provisioner{}, nil
-			case "sleep":
-				return &sleep.Provisioner{}, nil
-			default:
-				panic(n)
-			}
+		PluginConfig: &packer.PluginConfig{
+			Builders: packer.MapOfBuilder{
+				"file": func() (packersdk.Builder, error) { return &file.Builder{}, nil },
+			},
+			Provisioners: packer.MapOfProvisioner{
+				"sleep":       func() (packersdk.Provisioner, error) { return &sleep.Provisioner{}, nil },
+				"shell-local": func() (packersdk.Provisioner, error) { return &shell_local.Provisioner{}, nil },
+			},
 		},
 	}
 	return &packer.CoreConfig{
@@ -44,7 +36,7 @@ func testMetaSleepFile(t *testing.T) Meta {
 	var out, err bytes.Buffer
 	return Meta{
 		CoreConfig: testCoreConfigSleepBuilder(t),
-		Ui: &packer.BasicUi{
+		Ui: &packersdk.BasicUi{
 			Writer:      &out,
 			ErrorWriter: &err,
 		},

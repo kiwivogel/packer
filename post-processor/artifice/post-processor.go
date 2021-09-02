@@ -1,3 +1,5 @@
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+
 package artifice
 
 import (
@@ -5,10 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 )
 
 // The artifact-override post-processor allows you to specify arbitrary files as
@@ -30,8 +33,11 @@ type PostProcessor struct {
 	config Config
 }
 
+func (p *PostProcessor) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
+
 func (p *PostProcessor) Configure(raws ...interface{}) error {
 	err := config.Decode(&p.config, &config.DecodeOpts{
+		PluginType:         "artifice",
 		Interpolate:        true,
 		InterpolateContext: &p.config.ctx,
 		InterpolateFilter: &interpolate.RenderFilter{
@@ -49,9 +55,9 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 	return nil
 }
 
-func (p *PostProcessor) PostProcess(ctx context.Context, ui packer.Ui, artifact packer.Artifact) (packer.Artifact, bool, bool, error) {
+func (p *PostProcessor) PostProcess(ctx context.Context, ui packersdk.Ui, artifact packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
 	if len(artifact.Files()) > 0 {
-		ui.Say(fmt.Sprintf("Discarding artifact files: %s", strings.Join(artifact.Files(), ", ")))
+		ui.Say(fmt.Sprintf("Discarding files from artifact: %s", strings.Join(artifact.Files(), ", ")))
 	}
 
 	artifact, err := NewArtifact(p.config.Files)

@@ -1,3 +1,5 @@
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+
 package restart
 
 import (
@@ -11,16 +13,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/common/retry"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/retry"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	"github.com/masterzen/winrm"
 )
 
 var DefaultRestartCommand = `shutdown /r /f /t 0 /c "packer restart"`
-var DefaultRestartCheckCommand = winrm.Powershell(`echo "${env:COMPUTERNAME} restarted."`)
+var DefaultRestartCheckCommand = winrm.Powershell(`echo ("{0} restarted." -f [System.Net.Dns]::GetHostName())`)
 var retryableSleep = 5 * time.Second
 var TryCheckReboot = `shutdown /r /f /t 60 /c "packer restart test"`
 var AbortReboot = `shutdown /a`
@@ -55,14 +58,17 @@ type Config struct {
 
 type Provisioner struct {
 	config     Config
-	comm       packer.Communicator
-	ui         packer.Ui
+	comm       packersdk.Communicator
+	ui         packersdk.Ui
 	cancel     chan struct{}
 	cancelLock sync.Mutex
 }
 
+func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
+
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	err := config.Decode(&p.config, &config.DecodeOpts{
+		PluginType:         "windows-restart",
 		Interpolate:        true,
 		InterpolateContext: &p.config.ctx,
 		InterpolateFilter: &interpolate.RenderFilter{
@@ -94,7 +100,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, _ map[string]interface{}) error {
 	p.cancelLock.Lock()
 	p.cancel = make(chan struct{})
 	p.cancelLock.Unlock()
@@ -103,10 +109,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	p.comm = comm
 	p.ui = ui
 
-	var cmd *packer.RemoteCmd
+	var cmd *packersdk.RemoteCmd
 	command := p.config.RestartCommand
 	err := retry.Config{StartTimeout: p.config.RestartTimeout}.Run(ctx, func(context.Context) error {
-		cmd = &packer.RemoteCmd{Command: command}
+		cmd = &packersdk.RemoteCmd{Command: command}
 		return cmd.RunWithUi(ctx, comm, ui)
 	})
 
@@ -121,7 +127,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	return waitForRestart(ctx, p, comm)
 }
 
-var waitForRestart = func(ctx context.Context, p *Provisioner, comm packer.Communicator) error {
+var waitForRestart = func(ctx context.Context, p *Provisioner, comm packersdk.Communicator) error {
 	ui := p.ui
 	ui.Say("Waiting for machine to restart...")
 	waitDone := make(chan bool, 1)
@@ -129,19 +135,14 @@ var waitForRestart = func(ctx context.Context, p *Provisioner, comm packer.Commu
 	var err error
 
 	p.comm = comm
-	var cmd *packer.RemoteCmd
+	var cmd *packersdk.RemoteCmd
 	trycommand := TryCheckReboot
 	abortcommand := AbortReboot
-
-	// This sleep works around an azure/winrm bug. For more info see
-	// https://github.com/hashicorp/packer/issues/5257; we can remove the
-	// sleep when the underlying bug has been resolved.
-	time.Sleep(1 * time.Second)
 
 	// Stolen from Vagrant reboot checker
 	for {
 		log.Printf("Check if machine is rebooting...")
-		cmd = &packer.RemoteCmd{Command: trycommand}
+		cmd = &packersdk.RemoteCmd{Command: trycommand}
 		err = cmd.RunWithUi(ctx, comm, ui)
 		if err != nil {
 			// Couldn't execute, we assume machine is rebooting already
@@ -159,7 +160,7 @@ var waitForRestart = func(ctx context.Context, p *Provisioner, comm packer.Commu
 		}
 		if cmd.ExitStatus() == 0 {
 			// Cancel reboot we created to test if machine was already rebooting
-			cmd = &packer.RemoteCmd{Command: abortcommand}
+			cmd = &packersdk.RemoteCmd{Command: abortcommand}
 			cmd.RunWithUi(ctx, comm, ui)
 			break
 		}
@@ -210,7 +211,7 @@ var waitForCommunicator = func(ctx context.Context, p *Provisioner) error {
 	// vm has met their necessary criteria for having restarted. If the
 	// user doesn't set a special restart command, we just run the
 	// default as cmdModuleLoad below.
-	cmdRestartCheck := &packer.RemoteCmd{Command: p.config.RestartCheckCommand}
+	cmdRestartCheck := &packersdk.RemoteCmd{Command: p.config.RestartCheckCommand}
 	log.Printf("Checking that communicator is connected with: '%s'",
 		cmdRestartCheck.Command)
 	for {
@@ -239,7 +240,7 @@ var waitForCommunicator = func(ctx context.Context, p *Provisioner) error {
 		// provisioning before powershell is actually ready.
 		// In this next check, we parse stdout to make sure that the command is
 		// actually running as expected.
-		cmdModuleLoad := &packer.RemoteCmd{Command: DefaultRestartCheckCommand}
+		cmdModuleLoad := &packersdk.RemoteCmd{Command: DefaultRestartCheckCommand}
 		var buf, buf2 bytes.Buffer
 		cmdModuleLoad.Stdout = &buf
 		cmdModuleLoad.Stdout = io.MultiWriter(cmdModuleLoad.Stdout, &buf2)
@@ -257,18 +258,17 @@ var waitForCommunicator = func(ctx context.Context, p *Provisioner) error {
 			shouldContinue := false
 			for _, RegKey := range p.config.RegistryKeys {
 				KeyTestCommand := winrm.Powershell(fmt.Sprintf(`Test-Path "%s"`, RegKey))
-				cmdKeyCheck := &packer.RemoteCmd{Command: KeyTestCommand}
+				cmdKeyCheck := &packersdk.RemoteCmd{Command: KeyTestCommand}
 				log.Printf("Checking registry for pending reboots")
 				var buf, buf2 bytes.Buffer
 				cmdKeyCheck.Stdout = &buf
 				cmdKeyCheck.Stdout = io.MultiWriter(cmdKeyCheck.Stdout, &buf2)
 
-				err := p.comm.Start(ctx, cmdKeyCheck)
+				err := cmdKeyCheck.RunWithUi(ctx, p.comm, p.ui)
 				if err != nil {
 					log.Printf("Communication connection err: %s", err)
 					shouldContinue = true
 				}
-				cmdKeyCheck.Wait()
 
 				stdoutToRead := buf2.String()
 				if strings.Contains(stdoutToRead, "True") {

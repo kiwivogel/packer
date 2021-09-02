@@ -9,7 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/packer/packer"
+	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 )
 
 func testConfig() map[string]interface{} {
@@ -47,7 +48,7 @@ func TestProvisionerPrepare_extractScript(t *testing.T) {
 func TestProvisioner_Impl(t *testing.T) {
 	var raw interface{}
 	raw = &Provisioner{}
-	if _, ok := raw.(packer.Provisioner); !ok {
+	if _, ok := raw.(packersdk.Provisioner); !ok {
 		t.Fatalf("must be a Provisioner")
 	}
 }
@@ -264,17 +265,12 @@ func TestProvisionerQuote_EnvironmentVars(t *testing.T) {
 
 }
 
-func testUi() *packer.BasicUi {
-	return &packer.BasicUi{
+func testUi() *packersdk.BasicUi {
+	return &packersdk.BasicUi{
 		Reader:      new(bytes.Buffer),
 		Writer:      new(bytes.Buffer),
 		ErrorWriter: new(bytes.Buffer),
 	}
-}
-
-func testObjects() (packer.Ui, packer.Communicator) {
-	ui := testUi()
-	return ui, new(packer.MockCommunicator)
 }
 
 func TestProvisionerProvision_Inline(t *testing.T) {
@@ -290,9 +286,10 @@ func TestProvisionerProvision_Inline(t *testing.T) {
 	// Defaults provided by Packer
 	p.config.PackerBuildName = "vmware"
 	p.config.PackerBuilderType = "iso"
-	comm := new(packer.MockCommunicator)
+	comm := new(packersdk.MockCommunicator)
 	p.Prepare(config)
-	err := p.Provision(context.Background(), ui, comm)
+
+	err := p.Provision(context.Background(), ui, comm, generatedData())
 	if err != nil {
 		t.Fatal("should not have error")
 	}
@@ -311,7 +308,7 @@ func TestProvisionerProvision_Inline(t *testing.T) {
 	config["remote_path"] = "c:/Windows/Temp/inlineScript.bat"
 
 	p.Prepare(config)
-	err = p.Provision(context.Background(), ui, comm)
+	err = p.Provision(context.Background(), ui, comm, generatedData())
 	if err != nil {
 		t.Fatal("should not have error")
 	}
@@ -340,9 +337,9 @@ func TestProvisionerProvision_Scripts(t *testing.T) {
 	ui := testUi()
 
 	p := new(Provisioner)
-	comm := new(packer.MockCommunicator)
+	comm := new(packersdk.MockCommunicator)
 	p.Prepare(config)
-	err = p.Provision(context.Background(), ui, comm)
+	err = p.Provision(context.Background(), ui, comm, generatedData())
 	if err != nil {
 		t.Fatal("should not have error")
 	}
@@ -379,9 +376,9 @@ func TestProvisionerProvision_ScriptsWithEnvVars(t *testing.T) {
 	config["environment_vars"] = envVars
 
 	p := new(Provisioner)
-	comm := new(packer.MockCommunicator)
+	comm := new(packersdk.MockCommunicator)
 	p.Prepare(config)
-	err = p.Provision(context.Background(), ui, comm)
+	err = p.Provision(context.Background(), ui, comm, generatedData())
 	if err != nil {
 		t.Fatal("should not have error")
 	}
@@ -414,6 +411,7 @@ func TestProvisioner_createFlattenedEnvVars_windows(t *testing.T) {
 	}
 
 	p := new(Provisioner)
+	p.generatedData = generatedData()
 	p.Prepare(config)
 
 	// Defaults provided by Packer
@@ -428,7 +426,15 @@ func TestProvisioner_createFlattenedEnvVars_windows(t *testing.T) {
 		}
 	}
 }
+
 func TestCancel(t *testing.T) {
 	// Don't actually call Cancel() as it performs an os.Exit(0)
 	// which kills the 'go test' tool
+}
+func generatedData() map[string]interface{} {
+	return map[string]interface{}{
+		"PackerHTTPAddr": commonsteps.HttpAddrNotImplemented,
+		"PackerHTTPIP":   commonsteps.HttpIPNotImplemented,
+		"PackerHTTPPort": commonsteps.HttpPortNotImplemented,
+	}
 }

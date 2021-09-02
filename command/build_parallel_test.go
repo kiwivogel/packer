@@ -8,8 +8,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2/hcldec"
+
 	"golang.org/x/sync/errgroup"
 
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer/builder/file"
 	"github.com/hashicorp/packer/packer"
 	"github.com/hashicorp/packer/provisioner/sleep"
@@ -28,9 +31,13 @@ type ParallelTestBuilder struct {
 	wg sync.WaitGroup
 }
 
-func (b *ParallelTestBuilder) Prepare(raws ...interface{}) ([]string, error) { return nil, nil }
+func (b *ParallelTestBuilder) ConfigSpec() hcldec.ObjectSpec { return nil }
 
-func (b *ParallelTestBuilder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
+func (b *ParallelTestBuilder) Prepare(raws ...interface{}) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (b *ParallelTestBuilder) Run(ctx context.Context, ui packersdk.Ui, hook packersdk.Hook) (packersdk.Artifact, error) {
 	ui.Say("building")
 	b.wg.Done()
 	return nil, nil
@@ -39,9 +46,13 @@ func (b *ParallelTestBuilder) Run(ctx context.Context, ui packer.Ui, hook packer
 // LockedBuilder wont run until unlock is called
 type LockedBuilder struct{ unlock chan interface{} }
 
-func (b *LockedBuilder) Prepare(raws ...interface{}) ([]string, error) { return nil, nil }
+func (b *LockedBuilder) ConfigSpec() hcldec.ObjectSpec { return nil }
 
-func (b *LockedBuilder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
+func (b *LockedBuilder) Prepare(raws ...interface{}) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (b *LockedBuilder) Run(ctx context.Context, ui packersdk.Ui, hook packersdk.Hook) (packersdk.Artifact, error) {
 	ui.Say("locking build")
 	select {
 	case <-b.unlock:
@@ -57,29 +68,19 @@ func testMetaParallel(t *testing.T, builder *ParallelTestBuilder, locked *Locked
 	return Meta{
 		CoreConfig: &packer.CoreConfig{
 			Components: packer.ComponentFinder{
-				Builder: func(n string) (packer.Builder, error) {
-					switch n {
-					case "parallel-test":
-						return builder, nil
-					case "file":
-						return &file.Builder{}, nil
-					case "lock":
-						return locked, nil
-					default:
-						panic(n)
-					}
-				},
-				Provisioner: func(n string) (packer.Provisioner, error) {
-					switch n {
-					case "sleep":
-						return &sleep.Provisioner{}, nil
-					default:
-						panic(n)
-					}
+				PluginConfig: &packer.PluginConfig{
+					Builders: packer.MapOfBuilder{
+						"parallel-test": func() (packersdk.Builder, error) { return builder, nil },
+						"file":          func() (packersdk.Builder, error) { return &file.Builder{}, nil },
+						"lock":          func() (packersdk.Builder, error) { return locked, nil },
+					},
+					Provisioners: packer.MapOfProvisioner{
+						"sleep": func() (packersdk.Provisioner, error) { return &sleep.Provisioner{}, nil },
+					},
 				},
 			},
 		},
-		Ui: &packer.BasicUi{
+		Ui: &packersdk.BasicUi{
 			Writer:      &out,
 			ErrorWriter: &err,
 		},
@@ -97,7 +98,7 @@ func TestBuildParallel_1(t *testing.T) {
 	}
 
 	args := []string{
-		fmt.Sprintf("-parallel=true"),
+		fmt.Sprintf("-parallel-builds=10"),
 		filepath.Join(testFixture("parallel"), "1lock-5wg.json"),
 	}
 

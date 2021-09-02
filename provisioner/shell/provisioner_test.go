@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/packer/packer"
+	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 )
 
 func testConfig() map[string]interface{} {
@@ -19,7 +20,7 @@ func testConfig() map[string]interface{} {
 func TestProvisioner_Impl(t *testing.T) {
 	var raw interface{}
 	raw = &Provisioner{}
-	if _, ok := raw.(packer.Provisioner); !ok {
+	if _, ok := raw.(packersdk.Provisioner); !ok {
 		t.Fatalf("must be a Provisioner")
 	}
 }
@@ -271,6 +272,46 @@ func TestProvisioner_createFlattenedEnvVars(t *testing.T) {
 	}
 
 	p := new(Provisioner)
+	p.generatedData = generatedData()
+	p.Prepare(config)
+
+	// Defaults provided by Packer
+	p.config.PackerBuildName = "vmware"
+	p.config.PackerBuilderType = "iso"
+
+	for i, expectedValue := range expected {
+		p.config.Vars = userEnvVarTests[i]
+		flattenedEnvVars = p.createFlattenedEnvVars()
+		if flattenedEnvVars != expectedValue {
+			t.Fatalf("expected flattened env vars to be: %s, got %s.", expectedValue, flattenedEnvVars)
+		}
+	}
+}
+
+func TestProvisioner_createFlattenedEnvVars_withEnvVarFormat(t *testing.T) {
+	var flattenedEnvVars string
+	config := testConfig()
+
+	userEnvVarTests := [][]string{
+		{},                     // No user env var
+		{"FOO=bar"},            // Single user env var
+		{"FOO=bar's"},          // User env var with single quote in value
+		{"FOO=bar", "BAZ=qux"}, // Multiple user env vars
+		{"FOO=bar=baz"},        // User env var with value containing equals
+		{"FOO==bar"},           // User env var with value starting with equals
+	}
+	expected := []string{
+		`PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+		`FOO=bar PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+		`FOO=bar'"'"'s PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+		`BAZ=qux FOO=bar PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+		`FOO=bar=baz PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+		`FOO==bar PACKER_BUILDER_TYPE=iso PACKER_BUILD_NAME=vmware `,
+	}
+
+	p := new(Provisioner)
+	p.generatedData = generatedData()
+	p.config.EnvVarFormat = "%s=%s "
 	p.Prepare(config)
 
 	// Defaults provided by Packer
@@ -326,6 +367,8 @@ export PACKER_BUILD_NAME='vmware'
 	}
 
 	p := new(Provisioner)
+	p.generatedData = generatedData()
+	p.config.UseEnvVarFile = true
 	p.Prepare(config)
 
 	// Defaults provided by Packer
@@ -337,6 +380,55 @@ export PACKER_BUILD_NAME='vmware'
 		flattenedEnvVars = p.createEnvVarFileContent()
 		if flattenedEnvVars != expectedValue {
 			t.Fatalf("expected flattened env vars to be: %s, got %s.", expectedValue, flattenedEnvVars)
+		}
+	}
+}
+
+func TestProvisioner_createEnvVarFileContent_withEnvVarFormat(t *testing.T) {
+	var flattenedEnvVars string
+	config := testConfig()
+
+	userEnvVarTests := [][]string{
+		{},                     // No user env var
+		{"FOO=bar", "BAZ=qux"}, // Multiple user env vars
+		{"FOO=bar=baz"},        // User env var with value containing equals
+		{"FOO==bar"},           // User env var with value starting with equals
+	}
+	expected := []string{
+		`PACKER_BUILDER_TYPE=iso
+PACKER_BUILD_NAME=vmware
+`,
+		`BAZ=qux
+FOO=bar
+PACKER_BUILDER_TYPE=iso
+PACKER_BUILD_NAME=vmware
+`,
+		`FOO=bar=baz
+PACKER_BUILDER_TYPE=iso
+PACKER_BUILD_NAME=vmware
+`,
+		`FOO==bar
+PACKER_BUILDER_TYPE=iso
+PACKER_BUILD_NAME=vmware
+`,
+	}
+
+	p := new(Provisioner)
+	p.generatedData = generatedData()
+	p.config.UseEnvVarFile = true
+	//User provided env_var_format without export prefix
+	p.config.EnvVarFormat = "%s=%s\n"
+	p.Prepare(config)
+
+	// Defaults provided by Packer
+	p.config.PackerBuildName = "vmware"
+	p.config.PackerBuilderType = "iso"
+
+	for i, expectedValue := range expected {
+		p.config.Vars = userEnvVarTests[i]
+		flattenedEnvVars = p.createEnvVarFileContent()
+		if flattenedEnvVars != expectedValue {
+			t.Fatalf("expected flattened env vars to be: %q, got %q.", expectedValue, flattenedEnvVars)
 		}
 	}
 }
@@ -402,14 +494,14 @@ func TestProvisioner_RemoteFileDefaultsToScriptnnnn(t *testing.T) {
 		t.Fatalf("should not have error: %s", err)
 	}
 
-	remoteFileRegex := regexp.MustCompile("script_[0-9]{4}.sh")
+	remoteFileRegex := regexp.MustCompile("script_[0-9]{1,4}.sh")
 
 	if !remoteFileRegex.MatchString(p.config.RemoteFile) {
-		t.Fatalf("remote_file did not default to script_nnnn.sh")
+		t.Fatalf("remote_file did not default to script_nnnn.sh: %q", p.config.RemoteFile)
 	}
 
 	if !remoteFileRegex.MatchString(p.config.RemotePath) {
-		t.Fatalf("remote_path did not match script_nnnn.sh")
+		t.Fatalf("remote_path did not match script_nnnn.sh: %q", p.config.RemotePath)
 	}
 }
 
@@ -428,7 +520,7 @@ func TestProvisioner_RemotePathSetViaRemotePathAndRemoteFile(t *testing.T) {
 	}
 
 	if p.config.RemotePath != expectedRemoteFolder+"/"+expectedRemoteFile {
-		t.Fatalf("remote path does not contain remote_file")
+		t.Fatalf("remote path does not contain remote_file: %q", p.config.RemotePath)
 	}
 }
 
@@ -449,7 +541,7 @@ func TestProvisioner_RemotePathOverridesRemotePathAndRemoteFile(t *testing.T) {
 	}
 
 	if p.config.RemotePath != expectedRemotePath {
-		t.Fatalf("remote path does not contain remote_path")
+		t.Fatalf("remote path does not contain remote_path: %q", p.config.RemotePath)
 	}
 }
 
@@ -462,9 +554,17 @@ func TestProvisionerRemotePathDefaultsSuccessfully(t *testing.T) {
 		t.Fatalf("should not have error: %s", err)
 	}
 
-	remotePathRegex := regexp.MustCompile("/tmp/script_[0-9]{4}.sh")
+	remotePathRegex := regexp.MustCompile("/tmp/script_[0-9]{1,4}.sh")
 
 	if !remotePathRegex.MatchString(p.config.RemotePath) {
-		t.Fatalf("remote path does not match the expected default regex")
+		t.Fatalf("remote path does not match the expected default regex: %q", p.config.RemotePath)
+	}
+}
+
+func generatedData() map[string]interface{} {
+	return map[string]interface{}{
+		"PackerHTTPAddr": commonsteps.HttpAddrNotImplemented,
+		"PackerHTTPIP":   commonsteps.HttpIPNotImplemented,
+		"PackerHTTPPort": commonsteps.HttpPortNotImplemented,
 	}
 }

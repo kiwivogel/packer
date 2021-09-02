@@ -6,15 +6,14 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer/command"
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/plugin"
-	"github.com/kardianos/osext"
 )
 
 // PACKERSPACE is used to represent the spaces that separate args for a command
@@ -22,258 +21,175 @@ import (
 const PACKERSPACE = "-PACKERSPACE-"
 
 type config struct {
-	DisableCheckpoint          bool `json:"disable_checkpoint"`
-	DisableCheckpointSignature bool `json:"disable_checkpoint_signature"`
-	PluginMinPort              int
-	PluginMaxPort              int
+	DisableCheckpoint          bool              `json:"disable_checkpoint"`
+	DisableCheckpointSignature bool              `json:"disable_checkpoint_signature"`
+	RawBuilders                map[string]string `json:"builders"`
+	RawProvisioners            map[string]string `json:"provisioners"`
+	RawPostProcessors          map[string]string `json:"post-processors"`
 
-	Builders       map[string]string
-	PostProcessors map[string]string `json:"post-processors"`
-	Provisioners   map[string]string
+	Plugins *packer.PluginConfig
 }
 
-// Decodes configuration in JSON format from the given io.Reader into
+// decodeConfig decodes configuration in JSON format from the given io.Reader into
 // the config object pointed to.
 func decodeConfig(r io.Reader, c *config) error {
 	decoder := json.NewDecoder(r)
 	return decoder.Decode(c)
 }
 
-// Discover discovers plugins.
-//
-// Search the directory of the executable, then the plugins directory, and
-// finally the CWD, in that order. Any conflicts will overwrite previously
-// found plugins, in that order.
-// Hence, the priority order is the reverse of the search order - i.e., the
-// CWD has the highest priority.
-func (c *config) Discover() error {
-	// If we are already inside a plugin process we should not need to
-	// discover anything.
-	if os.Getenv(plugin.MagicCookieKey) == plugin.MagicCookieValue {
-		return nil
-	}
-
-	// First, look in the same directory as the executable.
-	exePath, err := osext.Executable()
-	if err != nil {
-		log.Printf("[ERR] Error loading exe directory: %s", err)
-	} else {
-		if err := c.discover(filepath.Dir(exePath)); err != nil {
-			return err
+// LoadExternalComponentsFromConfig loads plugins defined in RawBuilders, RawProvisioners, and RawPostProcessors.
+func (c *config) LoadExternalComponentsFromConfig() {
+	// helper to build up list of plugin paths
+	extractPaths := func(m map[string]string) []string {
+		paths := make([]string, 0, len(m))
+		for _, v := range m {
+			paths = append(paths, v)
 		}
+
+		return paths
 	}
 
-	// Next, look in the plugins directory.
-	dir, err := packer.ConfigDir()
-	if err != nil {
-		log.Printf("[ERR] Error loading config directory: %s", err)
-	} else {
-		if err := c.discover(filepath.Join(dir, "plugins")); err != nil {
-			return err
+	var pluginPaths []string
+	pluginPaths = append(pluginPaths, extractPaths(c.RawProvisioners)...)
+	pluginPaths = append(pluginPaths, extractPaths(c.RawBuilders)...)
+	pluginPaths = append(pluginPaths, extractPaths(c.RawPostProcessors)...)
+
+	var externallyUsed = make([]string, 0, len(pluginPaths))
+	for _, pluginPath := range pluginPaths {
+		name, err := c.loadSingleComponent(pluginPath)
+		if err != nil {
+			log.Print(err)
+			continue
 		}
+
+		log.Printf("loaded plugin: %s = %s", name, pluginPath)
+		externallyUsed = append(externallyUsed, name)
 	}
 
-	// Next, look in the CWD.
-	if err := c.discover("."); err != nil {
-		return err
+	if len(externallyUsed) > 0 {
+		sort.Strings(externallyUsed)
+		log.Printf("using external plugins %v", externallyUsed)
 	}
-
-	// Finally, try to use an internal plugin. Note that this will not override
-	// any previously-loaded plugins.
-	if err := c.discoverInternal(); err != nil {
-		return err
-	}
-
-	return nil
 }
 
-// This is a proper packer.BuilderFunc that can be used to load packer.Builder
-// implementations from the defined plugins.
-func (c *config) LoadBuilder(name string) (packer.Builder, error) {
-	log.Printf("Loading builder: %s\n", name)
-	bin, ok := c.Builders[name]
-	if !ok {
-		log.Printf("Builder not found: %s\n", name)
-		return nil, nil
+func (c *config) loadSingleComponent(path string) (string, error) {
+	pluginName := filepath.Base(path)
+
+	// On Windows, ignore any plugins that don't end in .exe.
+	// We could do a full PATHEXT parse, but this is probably good enough.
+	if runtime.GOOS == "windows" && strings.ToLower(filepath.Ext(pluginName)) != ".exe" {
+		return "", fmt.Errorf("error loading plugin %q, no exe extension", path)
 	}
 
-	return c.pluginClient(bin).Builder()
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("error loading plugin %q: %s", path, err)
+	}
+
+	// If the filename has a ".", trim up to there
+	if idx := strings.Index(pluginName, "."); idx >= 0 {
+		pluginName = pluginName[:idx]
+	}
+
+	switch {
+	case strings.HasPrefix(pluginName, "packer-builder-"):
+		pluginName = pluginName[len("packer-builder-"):]
+		c.Plugins.Builders.Set(pluginName, func() (packersdk.Builder, error) {
+			return c.Plugins.Client(path).Builder()
+		})
+	case strings.HasPrefix(pluginName, "packer-post-processor-"):
+		pluginName = pluginName[len("packer-post-processor-"):]
+		c.Plugins.PostProcessors.Set(pluginName, func() (packersdk.PostProcessor, error) {
+			return c.Plugins.Client(path).PostProcessor()
+		})
+	case strings.HasPrefix(pluginName, "packer-provisioner-"):
+		pluginName = pluginName[len("packer-provisioner-"):]
+		c.Plugins.Provisioners.Set(pluginName, func() (packersdk.Provisioner, error) {
+			return c.Plugins.Client(path).Provisioner()
+		})
+	}
+
+	return pluginName, nil
+}
+
+// This is a proper packer.BuilderFunc that can be used to load packersdk.Builder
+// implementations from the defined plugins.
+func (c *config) StartBuilder(name string) (packersdk.Builder, error) {
+	log.Printf("Loading builder: %s\n", name)
+	return c.Plugins.Builders.Start(name)
 }
 
 // This is a proper implementation of packer.HookFunc that can be used
-// to load packer.Hook implementations from the defined plugins.
-func (c *config) LoadHook(name string) (packer.Hook, error) {
+// to load packersdk.Hook implementations from the defined plugins.
+func (c *config) StarHook(name string) (packersdk.Hook, error) {
 	log.Printf("Loading hook: %s\n", name)
-	return c.pluginClient(name).Hook()
+	return c.Plugins.Client(name).Hook()
 }
 
-// This is a proper packer.PostProcessorFunc that can be used to load
-// packer.PostProcessor implementations from defined plugins.
-func (c *config) LoadPostProcessor(name string) (packer.PostProcessor, error) {
+// This is a proper packersdk.PostProcessorFunc that can be used to load
+// packersdk.PostProcessor implementations from defined plugins.
+func (c *config) StartPostProcessor(name string) (packersdk.PostProcessor, error) {
 	log.Printf("Loading post-processor: %s", name)
-	bin, ok := c.PostProcessors[name]
-	if !ok {
-		log.Printf("Post-processor not found: %s", name)
-		return nil, nil
-	}
-
-	return c.pluginClient(bin).PostProcessor()
+	return c.Plugins.PostProcessors.Start(name)
 }
 
 // This is a proper packer.ProvisionerFunc that can be used to load
 // packer.Provisioner implementations from defined plugins.
-func (c *config) LoadProvisioner(name string) (packer.Provisioner, error) {
+func (c *config) StartProvisioner(name string) (packersdk.Provisioner, error) {
 	log.Printf("Loading provisioner: %s\n", name)
-	bin, ok := c.Provisioners[name]
-	if !ok {
-		log.Printf("Provisioner not found: %s\n", name)
-		return nil, nil
-	}
-
-	return c.pluginClient(bin).Provisioner()
+	return c.Plugins.Provisioners.Start(name)
 }
 
-func (c *config) discover(path string) error {
-	var err error
-
-	if !filepath.IsAbs(path) {
-		path, err = filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = c.discoverSingle(
-		filepath.Join(path, "packer-builder-*"), &c.Builders)
-	if err != nil {
-		return err
-	}
-
-	err = c.discoverSingle(
-		filepath.Join(path, "packer-post-processor-*"), &c.PostProcessors)
-	if err != nil {
-		return err
-	}
-
-	return c.discoverSingle(
-		filepath.Join(path, "packer-provisioner-*"), &c.Provisioners)
-}
-
-func (c *config) discoverSingle(glob string, m *map[string]string) error {
-	matches, err := filepath.Glob(glob)
-	if err != nil {
-		return err
-	}
-
-	if *m == nil {
-		*m = make(map[string]string)
-	}
-
-	prefix := filepath.Base(glob)
-	prefix = prefix[:strings.Index(prefix, "*")]
-	for _, match := range matches {
-		file := filepath.Base(match)
-
-		// One Windows, ignore any plugins that don't end in .exe.
-		// We could do a full PATHEXT parse, but this is probably good enough.
-		if runtime.GOOS == "windows" && strings.ToLower(filepath.Ext(file)) != ".exe" {
-			log.Printf(
-				"[DEBUG] Ignoring plugin match %s, no exe extension",
-				match)
-			continue
-		}
-
-		// If the filename has a ".", trim up to there
-		if idx := strings.Index(file, "."); idx >= 0 {
-			file = file[:idx]
-		}
-
-		// Look for foo-bar-baz. The plugin name is "baz"
-		plugin := file[len(prefix):]
-		log.Printf("[DEBUG] Discovered plugin: %s = %s", plugin, match)
-		(*m)[plugin] = match
-	}
-
-	return nil
-}
-
-func (c *config) discoverInternal() error {
+func (c *config) discoverInternalComponents() error {
 	// Get the packer binary path
-	packerPath, err := osext.Executable()
+	packerPath, err := os.Executable()
 	if err != nil {
 		log.Printf("[ERR] Error loading exe directory: %s", err)
 		return err
 	}
 
 	for builder := range command.Builders {
-		_, found := (c.Builders)[builder]
-		if !found {
-			log.Printf("Using internal plugin for %s", builder)
-			(c.Builders)[builder] = fmt.Sprintf("%s%splugin%spacker-builder-%s",
+		builder := builder
+		if !c.Plugins.Builders.Has(builder) {
+			bin := fmt.Sprintf("%s%splugin%spacker-builder-%s",
 				packerPath, PACKERSPACE, PACKERSPACE, builder)
+			c.Plugins.Builders.Set(builder, func() (packersdk.Builder, error) {
+				return c.Plugins.Client(bin).Builder()
+			})
 		}
 	}
 
 	for provisioner := range command.Provisioners {
-		_, found := (c.Provisioners)[provisioner]
-		if !found {
-			log.Printf("Using internal plugin for %s", provisioner)
-			(c.Provisioners)[provisioner] = fmt.Sprintf(
-				"%s%splugin%spacker-provisioner-%s",
+		provisioner := provisioner
+		if !c.Plugins.Provisioners.Has(provisioner) {
+			bin := fmt.Sprintf("%s%splugin%spacker-provisioner-%s",
 				packerPath, PACKERSPACE, PACKERSPACE, provisioner)
+			c.Plugins.Provisioners.Set(provisioner, func() (packersdk.Provisioner, error) {
+				return c.Plugins.Client(bin).Provisioner()
+			})
 		}
 	}
 
 	for postProcessor := range command.PostProcessors {
-		_, found := (c.PostProcessors)[postProcessor]
-		if !found {
-			log.Printf("Using internal plugin for %s", postProcessor)
-			(c.PostProcessors)[postProcessor] = fmt.Sprintf(
-				"%s%splugin%spacker-post-processor-%s",
+		postProcessor := postProcessor
+		if !c.Plugins.PostProcessors.Has(postProcessor) {
+			bin := fmt.Sprintf("%s%splugin%spacker-post-processor-%s",
 				packerPath, PACKERSPACE, PACKERSPACE, postProcessor)
+			c.Plugins.PostProcessors.Set(postProcessor, func() (packersdk.PostProcessor, error) {
+				return c.Plugins.Client(bin).PostProcessor()
+			})
+		}
+	}
+
+	for dataSource := range command.Datasources {
+		dataSource := dataSource
+		if !c.Plugins.DataSources.Has(dataSource) {
+			bin := fmt.Sprintf("%s%splugin%spacker-datasource-%s",
+				packerPath, PACKERSPACE, PACKERSPACE, dataSource)
+			c.Plugins.DataSources.Set(dataSource, func() (packersdk.Datasource, error) {
+				return c.Plugins.Client(bin).Datasource()
+			})
 		}
 	}
 
 	return nil
-}
-
-func (c *config) pluginClient(path string) *plugin.Client {
-	originalPath := path
-
-	// First attempt to find the executable by consulting the PATH.
-	path, err := exec.LookPath(path)
-	if err != nil {
-		// If that doesn't work, look for it in the same directory
-		// as the `packer` executable (us).
-		log.Printf("Plugin could not be found. Checking same directory as executable.")
-		exePath, err := osext.Executable()
-		if err != nil {
-			log.Printf("Couldn't get current exe path: %s", err)
-		} else {
-			log.Printf("Current exe path: %s", exePath)
-			path = filepath.Join(filepath.Dir(exePath), filepath.Base(originalPath))
-		}
-	}
-
-	// Check for special case using `packer plugin PLUGIN`
-	args := []string{}
-	if strings.Contains(path, PACKERSPACE) {
-		parts := strings.Split(path, PACKERSPACE)
-		path = parts[0]
-		args = parts[1:]
-	}
-
-	// If everything failed, just use the original path and let the error
-	// bubble through.
-	if path == "" {
-		path = originalPath
-	}
-
-	log.Printf("Creating plugin client for path: %s", path)
-	var config plugin.ClientConfig
-	config.Cmd = exec.Command(path, args...)
-	config.Managed = true
-	config.MinPort = c.PluginMinPort
-	config.MaxPort = c.PluginMaxPort
-	return plugin.NewClient(&config)
 }

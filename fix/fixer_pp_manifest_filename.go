@@ -7,6 +7,12 @@ import (
 // FixerManifestFilename renames any Filename to Output
 type FixerManifestFilename struct{}
 
+func (FixerManifestFilename) DeprecatedOptions() map[string][]string {
+	return map[string][]string{
+		"packer.post-processor.manifest": []string{"filename"},
+	}
+}
+
 func (FixerManifestFilename) Fix(input map[string]interface{}) (map[string]interface{}, error) {
 	if input["post-processors"] == nil {
 		return input, nil

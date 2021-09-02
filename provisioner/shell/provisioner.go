@@ -1,3 +1,5 @@
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+
 // This package implements a provisioner for Packer that executes
 // shell scripts within the remote machine.
 package shell
@@ -15,25 +17,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/common/retry"
-	"github.com/hashicorp/packer/common/shell"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/tmp"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/retry"
+	"github.com/hashicorp/packer-plugin-sdk/shell"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/tmp"
 )
 
 type Config struct {
 	shell.Provisioner `mapstructure:",squash"`
 
+	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
+
 	// The shebang value used when running inline scripts.
 	InlineShebang string `mapstructure:"inline_shebang"`
 
 	// A duration of how long to pause after the provisioner
-	RawPauseAfter string `mapstructure:"pause_after"`
-
-	PauseAfter time.Duration
+	PauseAfter time.Duration `mapstructure:"pause_after"`
 
 	// Write the Vars to a file and source them from there rather than declaring
 	// inline
@@ -50,31 +53,29 @@ type Config struct {
 	// The timeout for retrying to start the process. Until this timeout
 	// is reached, if the provisioner can't start a process, it retries.
 	// This can be set high to allow for reboots.
-	RawStartRetryTimeout string `mapstructure:"start_retry_timeout"`
+	StartRetryTimeout time.Duration `mapstructure:"start_retry_timeout"`
 
 	// Whether to clean scripts up
 	SkipClean bool `mapstructure:"skip_clean"`
 
 	ExpectDisconnect bool `mapstructure:"expect_disconnect"`
 
-	startRetryTimeout time.Duration
-	ctx               interpolate.Context
 	// name of the tmp environment variable file, if UseEnvVarFile is true
 	envVarFile string
+
+	ctx interpolate.Context
 }
 
 type Provisioner struct {
-	config Config
+	config        Config
+	generatedData map[string]interface{}
 }
 
-type ExecuteCommandTemplate struct {
-	Vars       string
-	EnvVarFile string
-	Path       string
-}
+func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
 
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	err := config.Decode(&p.config, &config.DecodeOpts{
+		PluginType:         "shell",
 		Interpolate:        true,
 		InterpolateContext: &p.config.ctx,
 		InterpolateFilter: &interpolate.RenderFilter{
@@ -83,8 +84,17 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			},
 		},
 	}, raws...)
+
 	if err != nil {
 		return err
+	}
+
+	if p.config.EnvVarFormat == "" {
+		p.config.EnvVarFormat = "%s='%s' "
+
+		if p.config.UseEnvVarFile == true {
+			p.config.EnvVarFormat = "export %s='%s'\n"
+		}
 	}
 
 	if p.config.ExecuteCommand == "" {
@@ -102,8 +112,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.InlineShebang = "/bin/sh -e"
 	}
 
-	if p.config.RawStartRetryTimeout == "" {
-		p.config.RawStartRetryTimeout = "5m"
+	if p.config.StartRetryTimeout == 0 {
+		p.config.StartRetryTimeout = 5 * time.Minute
 	}
 
 	if p.config.RemoteFolder == "" {
@@ -115,8 +125,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if p.config.RemotePath == "" {
-		p.config.RemotePath = fmt.Sprintf(
-			"%s/%s", p.config.RemoteFolder, p.config.RemoteFile)
+		p.config.RemotePath = fmt.Sprintf("%s/%s", p.config.RemoteFolder, p.config.RemoteFile)
 	}
 
 	if p.config.Scripts == nil {
@@ -127,9 +136,9 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Vars = make([]string, 0)
 	}
 
-	var errs *packer.MultiError
+	var errs *packersdk.MultiError
 	if p.config.Script != "" && len(p.config.Scripts) > 0 {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Only one of script or scripts can be specified."))
 	}
 
@@ -138,16 +147,16 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if len(p.config.Scripts) == 0 && p.config.Inline == nil {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Either a script file or inline script must be specified."))
 	} else if len(p.config.Scripts) > 0 && p.config.Inline != nil {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Only a script file or an inline script can be specified, not both."))
 	}
 
 	for _, path := range p.config.Scripts {
 		if _, err := os.Stat(path); err != nil {
-			errs = packer.MultiErrorAppend(errs,
+			errs = packersdk.MultiErrorAppend(errs,
 				fmt.Errorf("Bad script '%s': %s", path, err))
 		}
 	}
@@ -156,24 +165,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	for _, kv := range p.config.Vars {
 		vs := strings.SplitN(kv, "=", 2)
 		if len(vs) != 2 || vs[0] == "" {
-			errs = packer.MultiErrorAppend(errs,
+			errs = packersdk.MultiErrorAppend(errs,
 				fmt.Errorf("Environment variable not in format 'key=value': %s", kv))
-		}
-	}
-
-	if p.config.RawStartRetryTimeout != "" {
-		p.config.startRetryTimeout, err = time.ParseDuration(p.config.RawStartRetryTimeout)
-		if err != nil {
-			errs = packer.MultiErrorAppend(
-				errs, fmt.Errorf("Failed parsing start_retry_timeout: %s", err))
-		}
-	}
-
-	if p.config.RawPauseAfter != "" {
-		p.config.PauseAfter, err = time.ParseDuration(p.config.RawPauseAfter)
-		if err != nil {
-			errs = packer.MultiErrorAppend(
-				errs, fmt.Errorf("Failed parsing pause_after: %s", err))
 		}
 	}
 
@@ -184,7 +177,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
+	if generatedData == nil {
+		generatedData = make(map[string]interface{})
+	}
+	p.generatedData = generatedData
+
 	scripts := make([]string, len(p.config.Scripts))
 	copy(scripts, p.config.Scripts)
 
@@ -204,6 +202,11 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		writer := bufio.NewWriter(tf)
 		writer.WriteString(fmt.Sprintf("#!%s\n", p.config.InlineShebang))
 		for _, command := range p.config.Inline {
+			p.config.ctx.Data = generatedData
+			command, err := interpolate.Render(command, &p.config.ctx)
+			if err != nil {
+				return fmt.Errorf("Error interpolating Inline: %s", err)
+			}
 			if _, err := writer.WriteString(command + "\n"); err != nil {
 				return fmt.Errorf("Error preparing shell script: %s", err)
 			}
@@ -234,11 +237,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		}
 
 		p.config.envVarFile = tf.Name()
-		defer os.Remove(p.config.envVarFile)
 
 		// upload the var file
-		var cmd *packer.RemoteCmd
-		err = retry.Config{StartTimeout: p.config.startRetryTimeout}.Run(ctx, func(ctx context.Context) error {
+		var cmd *packersdk.RemoteCmd
+		err = retry.Config{StartTimeout: p.config.StartRetryTimeout}.Run(ctx, func(ctx context.Context) error {
 			if _, err := tf.Seek(0, 0); err != nil {
 				return err
 			}
@@ -254,18 +256,19 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 			}
 			tf.Close()
 
-			cmd = &packer.RemoteCmd{
+			cmd = &packersdk.RemoteCmd{
 				Command: fmt.Sprintf("chmod 0600 %s", remoteVFName),
 			}
 			if err := comm.Start(ctx, cmd); err != nil {
-				return fmt.Errorf(
-					"Error chmodding script file to 0600 in remote "+
-						"machine: %s", err)
+				return fmt.Errorf("Error chmodding script file to 0600 in remote machine: %s", err)
 			}
 			cmd.Wait()
 			p.config.envVarFile = remoteVFName
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 	}
 
 	// Create environment variables to set before executing the command
@@ -282,11 +285,12 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		defer f.Close()
 
 		// Compile the command
-		p.config.ctx.Data = &ExecuteCommandTemplate{
-			Vars:       flattenedEnvVars,
-			EnvVarFile: p.config.envVarFile,
-			Path:       p.config.RemotePath,
-		}
+		// These are extra variables that will be made available for interpolation.
+		generatedData["Vars"] = flattenedEnvVars
+		generatedData["EnvVarFile"] = p.config.envVarFile
+		generatedData["Path"] = p.config.RemotePath
+		p.config.ctx.Data = generatedData
+
 		command, err := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx)
 		if err != nil {
 			return fmt.Errorf("Error processing command: %s", err)
@@ -297,8 +301,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		// the case that the upload succeeded, a restart is initiated,
 		// and then the command is executed but the file doesn't exist
 		// any longer.
-		var cmd *packer.RemoteCmd
-		err = retry.Config{StartTimeout: p.config.startRetryTimeout}.Run(ctx, func(ctx context.Context) error {
+		var cmd *packersdk.RemoteCmd
+		err = retry.Config{StartTimeout: p.config.StartRetryTimeout}.Run(ctx, func(ctx context.Context) error {
 			if _, err := f.Seek(0, 0); err != nil {
 				return err
 			}
@@ -312,7 +316,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 				return fmt.Errorf("Error uploading script: %s", err)
 			}
 
-			cmd = &packer.RemoteCmd{
+			cmd = &packersdk.RemoteCmd{
 				Command: fmt.Sprintf("chmod 0755 %s", p.config.RemotePath),
 			}
 			if err := comm.Start(ctx, cmd); err != nil {
@@ -322,7 +326,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 			}
 			cmd.Wait()
 
-			cmd = &packer.RemoteCmd{Command: command}
+			cmd = &packersdk.RemoteCmd{Command: command}
 			return cmd.RunWithUi(ctx, comm, ui)
 		})
 
@@ -332,7 +336,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 		// If the exit code indicates a remote disconnect, fail unless
 		// we were expecting it.
-		if cmd.ExitStatus() == packer.CmdDisconnect {
+		if cmd.ExitStatus() == packersdk.CmdDisconnect {
 			if !p.config.ExpectDisconnect {
 				return fmt.Errorf("Script disconnected unexpectedly. " +
 					"If you expected your script to disconnect, i.e. from a " +
@@ -344,23 +348,26 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 			return err
 		}
 
-		if !p.config.SkipClean {
+		if p.config.SkipClean {
+			continue
+		}
 
-			// Delete the temporary file we created. We retry this a few times
-			// since if the above rebooted we have to wait until the reboot
-			// completes.
-			err = p.cleanupRemoteFile(p.config.RemotePath, comm)
-			if err != nil {
-				return err
-			}
-			err = p.cleanupRemoteFile(p.config.envVarFile, comm)
-			if err != nil {
-				return err
-			}
+		// Delete the temporary file we created. We retry this a few times
+		// since if the above rebooted we have to wait until the reboot
+		// completes.
+		if err := p.cleanupRemoteFile(p.config.RemotePath, comm); err != nil {
+			return err
+		}
+
+	}
+
+	if !p.config.SkipClean {
+		if err := p.cleanupRemoteFile(p.config.envVarFile, comm); err != nil {
+			return err
 		}
 	}
 
-	if p.config.RawPauseAfter != "" {
+	if p.config.PauseAfter != 0 {
 		ui.Say(fmt.Sprintf("Pausing %s after this provisioner...", p.config.PauseAfter))
 		select {
 		case <-time.After(p.config.PauseAfter):
@@ -371,10 +378,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	return nil
 }
 
-func (p *Provisioner) cleanupRemoteFile(path string, comm packer.Communicator) error {
+func (p *Provisioner) cleanupRemoteFile(path string, comm packersdk.Communicator) error {
 	ctx := context.TODO()
-	err := retry.Config{StartTimeout: p.config.startRetryTimeout}.Run(ctx, func(ctx context.Context) error {
-		cmd := &packer.RemoteCmd{
+	err := retry.Config{StartTimeout: p.config.StartRetryTimeout}.Run(ctx, func(ctx context.Context) error {
+		cmd := &packersdk.RemoteCmd{
 			Command: fmt.Sprintf("rm -f %s", path),
 		}
 		if err := comm.Start(ctx, cmd); err != nil {
@@ -384,7 +391,7 @@ func (p *Provisioner) cleanupRemoteFile(path string, comm packer.Communicator) e
 		}
 		cmd.Wait()
 		// treat disconnects as retryable by returning an error
-		if cmd.ExitStatus() == packer.CmdDisconnect {
+		if cmd.ExitStatus() == packersdk.CmdDisconnect {
 			return fmt.Errorf("Disconnect while removing temporary script.")
 		}
 		if cmd.ExitStatus() != 0 {
@@ -406,21 +413,21 @@ func (p *Provisioner) escapeEnvVars() ([]string, map[string]string) {
 	envVars := make(map[string]string)
 
 	// Always available Packer provided env vars
-	envVars["PACKER_BUILD_NAME"] = fmt.Sprintf("%s", p.config.PackerBuildName)
-	envVars["PACKER_BUILDER_TYPE"] = fmt.Sprintf("%s", p.config.PackerBuilderType)
+	envVars["PACKER_BUILD_NAME"] = p.config.PackerBuildName
+	envVars["PACKER_BUILDER_TYPE"] = p.config.PackerBuilderType
 
 	// expose ip address variables
-	httpAddr := common.GetHTTPAddr()
-	if httpAddr != "" {
-		envVars["PACKER_HTTP_ADDR"] = httpAddr
+	httpAddr := p.generatedData["PackerHTTPAddr"]
+	if httpAddr != nil && httpAddr != commonsteps.HttpAddrNotImplemented {
+		envVars["PACKER_HTTP_ADDR"] = httpAddr.(string)
 	}
-	httpIP := common.GetHTTPIP()
-	if httpIP != "" {
-		envVars["PACKER_HTTP_IP"] = httpIP
+	httpIP := p.generatedData["PackerHTTPIP"]
+	if httpIP != nil && httpIP != commonsteps.HttpIPNotImplemented {
+		envVars["PACKER_HTTP_IP"] = httpIP.(string)
 	}
-	httpPort := common.GetHTTPPort()
-	if httpPort != "" {
-		envVars["PACKER_HTTP_PORT"] = httpPort
+	httpPort := p.generatedData["PackerHTTPPort"]
+	if httpPort != nil && httpPort != commonsteps.HttpPortNotImplemented {
+		envVars["PACKER_HTTP_PORT"] = httpPort.(string)
 	}
 
 	// Split vars into key/value components
@@ -444,21 +451,22 @@ func (p *Provisioner) escapeEnvVars() ([]string, map[string]string) {
 func (p *Provisioner) createEnvVarFileContent() string {
 	keys, envVars := p.escapeEnvVars()
 
-	flattened := ""
-	// Re-assemble vars surrounding value with single quotes and flatten
+	var flattened string
 	for _, key := range keys {
-		flattened += fmt.Sprintf("export %s='%s'\n", key, envVars[key])
+		flattened += fmt.Sprintf(p.config.EnvVarFormat, key, envVars[key])
 	}
 
 	return flattened
 }
 
-func (p *Provisioner) createFlattenedEnvVars() (flattened string) {
+func (p *Provisioner) createFlattenedEnvVars() string {
 	keys, envVars := p.escapeEnvVars()
 
-	// Re-assemble vars surrounding value with single quotes and flatten
+	// Re-assemble vars into specified format and flatten
+	var flattened string
 	for _, key := range keys {
-		flattened += fmt.Sprintf("%s='%s' ", key, envVars[key])
+		flattened += fmt.Sprintf(p.config.EnvVarFormat, key, envVars[key])
 	}
-	return
+
+	return flattened
 }

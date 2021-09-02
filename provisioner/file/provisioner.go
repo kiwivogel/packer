@@ -1,3 +1,6 @@
+//go:generate packer-sdc mapstructure-to-hcl2 -type Config
+//go:generate packer-sdc struct-markdown
+
 package file
 
 import (
@@ -9,27 +12,58 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/packer/common"
-	"github.com/hashicorp/packer/helper/config"
-	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/common"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
+	"github.com/hashicorp/packer-plugin-sdk/tmp"
 )
 
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
-
-	// The local path of the file to upload.
-	Source  string
-	Sources []string
-
-	// The remote path where the local file will be uploaded to.
-	Destination string
-
-	// Direction
-	Direction string
-
-	// False if the sources have to exist.
-	Generated bool
+	// This is the content to copy to `destination`. If destination is a file,
+	// content will be written to that file, in case of a directory a file named
+	// `pkr-file-content` is created. It's recommended to use a file as the
+	// destination. A template_file might be referenced in here, or any
+	// interpolation syntax. This attribute cannot be specified with source or
+	// sources.
+	Content string `mapstructure:"content" required:"true"`
+	// The path to a local file or directory to upload to the
+	// machine. The path can be absolute or relative. If it is relative, it is
+	// relative to the working directory when Packer is executed. If this is a
+	// directory, the existence of a trailing slash is important. Read below on
+	// uploading directories. Mandatory unless `sources` is set.
+	Source string `mapstructure:"source" required:"true"`
+	// A list of sources to upload. This can be used in place of the `source`
+	// option if you have several files that you want to upload to the same
+	// place. Note that the destination must be a directory with a trailing
+	// slash, and that all files listed in `sources` will be uploaded to the
+	// same directory with their file names preserved.
+	Sources []string `mapstructure:"sources" required:"false"`
+	// The path where the file will be uploaded to in the machine. This value
+	// must be a writable location and any parent directories
+	// must already exist. If the provisioning user (generally not root) cannot
+	// write to this directory, you will receive a "Permission Denied" error.
+	// If the source is a file, it's a good idea to make the destination a file
+	// as well, but if you set your destination as a directory, at least make
+	// sure that the destination ends in a trailing slash so that Packer knows
+	// to use the source's basename in the final upload path. Failure to do so
+	// may cause Packer to fail on file uploads. If the destination file
+	// already exists, it will be overwritten.
+	Destination string `mapstructure:"destination" required:"true"`
+	// The direction of the file transfer. This defaults to "upload". If it is
+	// set to "download" then the file "source" in the machine will be
+	// downloaded locally to "destination"
+	Direction string `mapstructure:"direction" required:"false"`
+	// For advanced users only. If true, check the file existence only before
+	// uploading, rather than upon pre-build validation. This allows users to
+	// upload files created on-the-fly. This defaults to false. We
+	// don't recommend using this feature, since it can cause Packer to become
+	// dependent on system state. We would prefer you generate your files before
+	// the Packer run, but realize that there are situations where this may be
+	// unavoidable.
+	Generated bool `mapstructure:"generated" required:"false"`
 
 	ctx interpolate.Context
 }
@@ -38,8 +72,11 @@ type Provisioner struct {
 	config Config
 }
 
+func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
+
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	err := config.Decode(&p.config, &config.DecodeOpts{
+		PluginType:         "file",
 		Interpolate:        true,
 		InterpolateContext: &p.config.ctx,
 		InterpolateFilter: &interpolate.RenderFilter{
@@ -54,10 +91,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Direction = "upload"
 	}
 
-	var errs *packer.MultiError
+	var errs *packersdk.MultiError
 
 	if p.config.Direction != "download" && p.config.Direction != "upload" {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Direction must be one of: download, upload."))
 	}
 	if p.config.Source != "" {
@@ -67,19 +104,24 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	if p.config.Direction == "upload" {
 		for _, src := range p.config.Sources {
 			if _, err := os.Stat(src); p.config.Generated == false && err != nil {
-				errs = packer.MultiErrorAppend(errs,
+				errs = packersdk.MultiErrorAppend(errs,
 					fmt.Errorf("Bad source '%s': %s", src, err))
 			}
 		}
 	}
 
-	if len(p.config.Sources) < 1 {
-		errs = packer.MultiErrorAppend(errs,
-			errors.New("Source must be specified."))
+	if len(p.config.Sources) < 1 && p.config.Content == "" {
+		errs = packersdk.MultiErrorAppend(errs,
+			errors.New("source, sources or content must be specified."))
+	}
+
+	if len(p.config.Sources) > 0 && p.config.Content != "" {
+		errs = packersdk.MultiErrorAppend(errs,
+			errors.New("source(s) conflicts with content."))
 	}
 
 	if p.config.Destination == "" {
-		errs = packer.MultiErrorAppend(errs,
+		errs = packersdk.MultiErrorAppend(errs,
 			errors.New("Destination must be specified."))
 	}
 
@@ -90,7 +132,25 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
+	if generatedData == nil {
+		generatedData = make(map[string]interface{})
+	}
+	p.config.ctx.Data = generatedData
+
+	if p.config.Content != "" {
+		file, err := tmp.File("pkr-file-content")
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		if _, err := file.WriteString(p.config.Content); err != nil {
+			return err
+		}
+		p.config.Content = ""
+		p.config.Sources = append(p.config.Sources, file.Name())
+	}
+
 	if p.config.Direction == "download" {
 		return p.ProvisionDownload(ui, comm)
 	} else {
@@ -98,10 +158,18 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	}
 }
 
-func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) ProvisionDownload(ui packersdk.Ui, comm packersdk.Communicator) error {
+	dst, err := interpolate.Render(p.config.Destination, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Error interpolating destination: %s", err)
+	}
 	for _, src := range p.config.Sources {
-		dst := p.config.Destination
-		ui.Say(fmt.Sprintf("Downloading %s => %s", src, dst))
+		dst := dst
+		src, err := interpolate.Render(src, &p.config.ctx)
+		if err != nil {
+			return fmt.Errorf("Error interpolating source: %s", err)
+		}
+
 		// ensure destination dir exists.  p.config.Destination may either be a file or a dir.
 		dir := dst
 		// if it doesn't end with a /, set dir as the parent dir
@@ -110,6 +178,8 @@ func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) 
 		} else if !strings.HasSuffix(src, "/") && !strings.HasSuffix(src, "*") {
 			dst = filepath.Join(dst, filepath.Base(src))
 		}
+		ui.Say(fmt.Sprintf("Downloading %s => %s", src, dst))
+
 		if dir != "" {
 			err := os.MkdirAll(dir, os.FileMode(0755))
 			if err != nil {
@@ -139,9 +209,16 @@ func (p *Provisioner) ProvisionDownload(ui packer.Ui, comm packer.Communicator) 
 	return nil
 }
 
-func (p *Provisioner) ProvisionUpload(ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) ProvisionUpload(ui packersdk.Ui, comm packersdk.Communicator) error {
+	dst, err := interpolate.Render(p.config.Destination, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Error interpolating destination: %s", err)
+	}
 	for _, src := range p.config.Sources {
-		dst := p.config.Destination
+		src, err := interpolate.Render(src, &p.config.ctx)
+		if err != nil {
+			return fmt.Errorf("Error interpolating source: %s", err)
+		}
 
 		ui.Say(fmt.Sprintf("Uploading %s => %s", src, dst))
 
@@ -152,7 +229,11 @@ func (p *Provisioner) ProvisionUpload(ui packer.Ui, comm packer.Communicator) er
 
 		// If we're uploading a directory, short circuit and do that
 		if info.IsDir() {
-			return comm.UploadDir(p.config.Destination, src, nil)
+			if err = comm.UploadDir(dst, src, nil); err != nil {
+				ui.Error(fmt.Sprintf("Upload failed: %s", err))
+				return err
+			}
+			continue
 		}
 
 		// We're uploading a file...
@@ -167,15 +248,16 @@ func (p *Provisioner) ProvisionUpload(ui packer.Ui, comm packer.Communicator) er
 			return err
 		}
 
+		filedst := dst
 		if strings.HasSuffix(dst, "/") {
-			dst = dst + filepath.Base(src)
+			filedst = dst + filepath.Base(src)
 		}
 
 		pf := ui.TrackProgress(filepath.Base(src), 0, info.Size(), f)
 		defer pf.Close()
 
 		// Upload the file
-		if err = comm.Upload(dst, pf, &fi); err != nil {
+		if err = comm.Upload(filedst, pf, &fi); err != nil {
 			if strings.Contains(err.Error(), "Error restoring file") {
 				ui.Error(fmt.Sprintf("Upload failed: %s; this can occur when "+
 					"your file destination is a folder without a trailing "+
